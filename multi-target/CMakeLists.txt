@@ -13,15 +13,15 @@ function(compile_capsule capsule_name device)
     # Can be in a function
     if(device STREQUAL "riscv")
         set(DEVICE_C_COMPILER "$ENV{RISCV}/bin/riscv64-unknown-elf-gcc")
-        set(DEVICE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -march=rv64imafc -mabi=lp64)
+        set(DEVICE_C_FLAGS ${CMAKE_C_FLAGS} -march=rv64imafc -mabi=lp64)
     else()
         set(DEVICE_C_COMPILER "gcc")
-        set(DEVICE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -march=native)
+        set(DEVICE_C_FLAGS ${CMAKE_C_FLAGS} -march=native)
     endif()
 
     add_custom_command(
         OUTPUT ${CAPSULE_SUBIDR}/${device}/${capsule_name}.exe
-        COMMAND ${DEVICE_C_COMPILER} ${DEVICE_CXX_FLAGS} -o ${CAPSULE_SUBIDR}/${device}/${capsule_name}.exe ${CAPSULE_SOURCES}
+        COMMAND ${DEVICE_C_COMPILER} ${DEVICE_C_FLAGS} -o ${CAPSULE_SUBIDR}/${device}/${capsule_name}.exe ${CAPSULE_SOURCES}
         DEPENDS ${CAPSULE_SOURCES}
     )
 endfunction()
