@@ -2,13 +2,14 @@
 
 # CUDA compiler and flags
 NVCC = nvcc
-NVCC_FLAGS = -O3 -arch=sm_60 -std=c++11
+NVCC_FLAGS = -O3 -arch=sm_75 -std=c++17
+
 
 # cuBLAS library
 CUBLAS_LIB = -lcublas
 
 # Targets
-all: simple_matmul optimized_matmul optimized_matmul_no_cublas cpu_optimized_matmul test_matmul
+all: simple_matmul optimized_matmul optimized_matmul_no_cublas cpu_optimized_matmul test_matmul vecadd
 
 # Simple matrix multiplication
 simple_matmul: simple_matmul.cu
@@ -29,6 +30,9 @@ cpu_optimized_matmul: cpu_optimized_matmul.cpp
 # Test matrix multiplication
 test_matmul: test_matmul.cu
 	$(NVCC) $(NVCC_FLAGS) -o test_matmul test_matmul.cu
+
+vecadd: vecadd.cu
+	$(NVCC) $(NVCC_FLAGS) -o vecadd vecadd.cu
 
 # Clean target
 clean:
