@@ -6,7 +6,7 @@
 
 // Tile size for shared memory optimization
 // OPTIMIZATION: 32x32 tiles provide optimal balance between:
-// - Shared memory usage (2KB per block)
+// - Shared memory usage (8KB per block: 2 arrays × 32×32 × 4 bytes)
 // - Thread occupancy (1024 threads per block)
 // - Memory coalescing (32 threads per warp)
 // - Cache efficiency (good spatial locality)
@@ -49,9 +49,10 @@ __global__ void optimizedMatMul(const float *A, const float *B, float *C, int M,
     // Load tile from matrix A into shared memory
     // OPTIMIZATION: Coalesced memory access pattern
     // - Threads in a warp access consecutive memory locations
-    // - This maximizes memory bandwidth utilization (up to 32x improvement)
+    // - This maximizes memory bandwidth utilization (up to 32x improvement in
+    // transaction efficiency)
     // - Each thread loads one element, but the entire warp loads 32 consecutive
-    // elements
+    // elements in a single memory transaction
     if (row < M && tileK + tx < K) {
       sA[ty][tx] = A[row * K + tileK + tx];
     } else {
@@ -60,8 +61,10 @@ __global__ void optimizedMatMul(const float *A, const float *B, float *C, int M,
 
     // Load tile from matrix B into shared memory
     // OPTIMIZATION: Coalesced memory access pattern
-    // - Similar to A, but accessing B matrix with proper indexing
-    // - Ensures optimal memory bandwidth for B matrix access
+    // - Threads in a warp access consecutive memory locations along columns
+    // - This provides good memory bandwidth utilization for B matrix access
+    // - Note: B matrix access pattern is less optimal than A due to
+    // column-major layout
     if (col < N && tileK + ty < K) {
       sB[ty][tx] = B[(tileK + ty) * N + col];
     } else {
@@ -75,7 +78,9 @@ __global__ void optimizedMatMul(const float *A, const float *B, float *C, int M,
     __syncthreads();
 
     // Compute partial dot product using shared memory
-    // OPTIMIZATION: Shared memory access is ~100x faster than global memory
+    // OPTIMIZATION: Shared memory access is significantly faster than global
+    // memory
+    // - Typical speedup: 10-50x depending on memory access patterns
     // - Each thread computes one element of the output matrix
     // - Data is reused across multiple threads, reducing global memory traffic
     // - This is the core of the tiling optimization

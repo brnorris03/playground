@@ -1,4 +1,4 @@
-# CUDA Matrix Multiplication Makefile
+w# CUDA Matrix Multiplication Makefile
 
 # CUDA compiler and flags
 NVCC = nvcc
@@ -9,7 +9,7 @@ NVCC_FLAGS = -O3 -arch=sm_75 -std=c++17
 CUBLAS_LIB = -lcublas
 
 # Targets
-all: simple_matmul optimized_matmul optimized_matmul_no_cublas cpu_optimized_matmul test_matmul vecadd
+all: simple_matmul optimized_matmul optimized_matmul_no_cublas cpu_optimized_matmul prefix_sum_cpu test_matmul
 
 # Simple matrix multiplication
 simple_matmul: simple_matmul.cu
@@ -27,6 +27,10 @@ optimized_matmul_no_cublas: optimized_matmul_no_cublas.cu
 cpu_optimized_matmul: cpu_optimized_matmul.cpp
 	g++ -O3 -march=native -mavx -mavx2 -mfma -std=c++17 -pthread -o cpu_optimized_matmul cpu_optimized_matmul.cpp
 
+# Thread-parallel prefix sum
+prefix_sum_cpu: prefix_sum_cpu.cpp
+	g++ -O3 -std=c++17 -pthread -o prefix_sum_cpu prefix_sum_cpu.cpp
+
 # Test matrix multiplication
 test_matmul: test_matmul.cu
 	$(NVCC) $(NVCC_FLAGS) -o test_matmul test_matmul.cu
@@ -36,7 +40,7 @@ vecadd: vecadd.cu
 
 # Clean target
 clean:
-	rm -f simple_matmul optimized_matmul optimized_matmul_no_cublas cpu_optimized_matmul test_matmul
+	rm -f simple_matmul optimized_matmul optimized_matmul_no_cublas cpu_optimized_matmul prefix_sum_cpu test_matmul
 
 # Run all implementations
 run: all
