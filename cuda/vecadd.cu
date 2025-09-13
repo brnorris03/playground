@@ -72,7 +72,11 @@ int main() {
   vecadd<<<blocks, threadsPerBlock>>>(d_a, d_b, d_c, kN);
 
   // Check for kernel launch errors
+<<<<<<< Updated upstream
   err = cudaGetLastError();
+=======
+  cudaError_t err = cudaGetLastError();
+>>>>>>> Stashed changes
   if (err != cudaSuccess) {
     std::cerr << "Kernel launch failed: " << cudaGetErrorString(err)
               << std::endl;
