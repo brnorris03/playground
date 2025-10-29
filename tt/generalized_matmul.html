@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>generalized_matmul.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<h1 id="generalized-matrix-multiplication-for-tenstorrent-wormhole-architecture">Generalized Matrix Multiplication for Tenstorrent Wormhole Architecture</h1>
+<h2 id="overview">Overview</h2>
+<p>The <code>custom_dm_matmul2.py</code> implementation provides a generalized matrix multiplication solution that can handle arbitrarily large matrices while fully utilizing the Tenstorrent Wormhole architecture. This document explains the key improvements and architectural decisions.</p>
+<h2 id="tenstorrent-tile-architecture">Tenstorrent Tile Architecture</h2>
+<p>According to the <a href="https://github.com/tenstorrent/tt-metal/blob/main/METALIUM_GUIDE.md#native-tile-based-computing">Tenstorrent Metalium Guide</a>, Tenstorrent operates on <strong>32-element tiles</strong> as the fundamental compute unit. This native tile-based computing approach is crucial for optimal performance:</p>
+<h3 id="32-element-tile-benefits"><strong>32-Element Tile Benefits</strong></h3>
+<ul>
+<li><strong>Hardware Optimized</strong>: Each tile is processed by specialized compute engines</li>
+<li><strong>Memory Efficient</strong>: Tiles fit optimally in L1 cache and SRAM</li>
+<li><strong>SIMD Operations</strong>: Vector operations on 32-element chunks</li>
+<li><strong>Network Efficiency</strong>: Tiles are the natural unit for NoC transfers</li>
+</ul>
+<h3 id="tile-alignment-strategy"><strong>Tile Alignment Strategy</strong></h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Ensure matrix dimensions are aligned to 32-element boundaries</span>
+<span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">align_to_tile_size</span><span class="hljs-params">(dim, tile_size=<span class="hljs-number">32</span>)</span>:</span>
+    <span class="hljs-keyword">return</span> ((dim + tile_size - <span class="hljs-number">1</span>) // tile_size) * tile_size
+
+<span class="hljs-comment"># Example: 100x100 matrix becomes 128x128 (4x4 tiles)</span>
+M_aligned = align_to_tile_size(<span class="hljs-number">100</span>)  <span class="hljs-comment"># 128</span>
+</div></code></pre>
+<h2 id="key-improvements-over-original-implementation">Key Improvements Over Original Implementation</h2>
+<h3 id="1-dynamic-configuration">1. <strong>Dynamic Configuration</strong></h3>
+<ul>
+<li><strong>Automatic Grid Sizing</strong>: Calculates optimal grid dimensions based on matrix sizes</li>
+<li><strong>Adaptive Block Factors</strong>: Determines optimal tiling based on available cores and memory</li>
+<li><strong>Scalable Architecture</strong>: Supports matrices from 32×32 to 1024×1024 and beyond (32-element tile aligned)</li>
+</ul>
+<h3 id="2-intelligent-tiling-strategy">2. <strong>Intelligent Tiling Strategy</strong></h3>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">calculate_optimal_block_factors</span><span class="hljs-params">(matrix_dims, grid_dims, max_tile_size=<span class="hljs-number">32</span>)</span>:</span>
+    M, K, N = matrix_dims
+    GY, GX = grid_dims
+    
+    <span class="hljs-comment"># Distribute work across available cores</span>
+    <span class="hljs-comment"># Tenstorrent operates on 32-element tiles as fundamental compute units</span>
+    M_block = max(<span class="hljs-number">1</span>, min(M // GY, max_tile_size))
+    N_block = max(<span class="hljs-number">1</span>, min(N // GX, max_tile_size))
+    K_block = max(<span class="hljs-number">1</span>, min(K, max_tile_size))
+</div></code></pre>
+<p><strong>Benefits:</strong></p>
+<ul>
+<li><strong>Memory Efficient</strong>: Respects core memory constraints</li>
+<li><strong>Load Balanced</strong>: Distributes work evenly across cores</li>
+<li><strong>Cache Friendly</strong>: Optimizes for L1/L2 cache utilization</li>
+</ul>
+<h3 id="3-optimal-grid-calculation">3. <strong>Optimal Grid Calculation</strong></h3>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">calculate_grid_size</span><span class="hljs-params">(matrix_dims, max_cores_per_dim=<span class="hljs-number">8</span>)</span>:</span>
+    M, K, N = matrix_dims
+    
+    <span class="hljs-comment"># For square matrices: use square grids</span>
+    <span class="hljs-keyword">if</span> abs(M - N) &lt;= max(M, N) * <span class="hljs-number">0.1</span>:
+        total_cores = min(M * N // (<span class="hljs-number">64</span> * <span class="hljs-number">64</span>), max_cores_per_dim * max_cores_per_dim)
+        grid_size = int(math.sqrt(total_cores))
+    
+    <span class="hljs-comment"># For rectangular matrices: use rectangular grids</span>
+    <span class="hljs-keyword">else</span>:
+        aspect_ratio = M / N
+        <span class="hljs-comment"># Calculate based on matrix aspect ratio</span>
+</div></code></pre>
+<p><strong>Features:</strong></p>
+<ul>
+<li><strong>Aspect Ratio Aware</strong>: Adapts grid shape to matrix shape</li>
+<li><strong>Core Utilization</strong>: Maximizes use of available cores</li>
+<li><strong>Wormhole Optimized</strong>: Respects architecture constraints</li>
+</ul>
+<h2 id="architecture-diagram">Architecture Diagram</h2>
+<pre><code class="language-mermaid"><div class="mermaid">graph TB
+    subgraph "Wormhole Chip"
+        subgraph "Core Grid (GY x GX)"
+            subgraph "Core (i,j)"
+                DM_LHS["dm_lhs Thread<br/>LHS Movement"]
+                DM_RHS["dm_rhs Thread<br/>RHS Movement"]
+                COMP["Compute Thread<br/>Matrix Multiply"]
+                
+                subgraph "Circular Buffers"
+                    LHS_CB["lhs_cb<br/>LHS Tiles"]
+                    RHS_CB["rhs_cb<br/>RHS Tiles"]
+                    OUT_CB["out_cb<br/>Output Accumulation"]
+                end
+            end
+        end
+        
+        subgraph "Network-on-Chip (NoC)"
+            NOC["High-Bandwidth<br/>Interconnect"]
+        end
+        
+        subgraph "Memory Hierarchy"
+            L2["L2 Cache<br/>Shared"]
+            L1["L1 Cache<br/>Per Core"]
+            SRAM["SRAM<br/>Per Core"]
+        end
+    end
+    
+    subgraph "External Memory"
+        DRAM["DDR/HBM<br/>Main Memory"]
+    end
+    
+    subgraph "Data Streams"
+        LHS_Stream["LHS Stream<br/>(M x K)"]
+        RHS_Stream["RHS Stream<br/>(K x N)"]
+        OUT_Stream["Output Stream<br/>(M x N)"]
+    end
+    
+    DRAM --> L2
+    L2 --> L1
+    L1 --> SRAM
+    SRAM --> LHS_CB
+    SRAM --> RHS_CB
+    SRAM --> OUT_CB
+    
+    LHS_Stream --> DM_LHS
+    RHS_Stream --> DM_RHS
+    COMP --> OUT_Stream
+    
+    NOC --> DM_LHS
+    NOC --> DM_RHS
+    NOC --> COMP
+</div></code></pre>
+<h2 id="algorithm-flow">Algorithm Flow</h2>
+<h3 id="1-initialization-phase">1. <strong>Initialization Phase</strong></h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Calculate optimal configuration</span>
+matrix_dims = (M, K, N)
+grid_dims = calculate_grid_size(matrix_dims, max_cores_per_dim)
+block_factors = calculate_optimal_block_factors(matrix_dims, grid_dims, max_tile_size)
+
+<span class="hljs-comment"># Calculate iteration counts</span>
+M_iters = (M + M_block - <span class="hljs-number">1</span>) // M_block
+N_iters = (N + N_block - <span class="hljs-number">1</span>) // N_block  
+K_iters = (K + K_block - <span class="hljs-number">1</span>) // K_block
+</div></code></pre>
+<h3 id="2-compute-thread-execution">2. <strong>Compute Thread Execution</strong></h3>
+<pre><code class="language-mermaid"><div class="mermaid">flowchart TD
+    Start([Start]) --> M_Loop["for m_iter in range(M_iters)"]
+    M_Loop --> N_Loop["for n_iter in range(N_iters)"]
+    N_Loop --> Init_Out["Initialize output accumulation"]
+    Init_Out --> K_Loop["for k_iter in range(K_iters)"]
+    K_Loop --> LHS_Pop["lhs_shard = lhs_cb.pop()"]
+    LHS_Pop --> RHS_Pop["rhs_shard = rhs_cb.pop()"]
+    RHS_Pop --> Compute["partial = lhs_shard @ rhs_shard"]
+    Compute --> Accumulate["current += partial"]
+    Accumulate --> K_Check{"k_iter < K_iters-1?"}
+    K_Check -->|Yes| K_Loop
+    K_Check -->|No| N_Check{"n_iter < N_iters-1?"}
+    N_Check -->|Yes| N_Loop
+    N_Check -->|No| M_Check{"m_iter < M_iters-1?"}
+    M_Check -->|Yes| M_Loop
+    M_Check -->|No| End([End])
+</div></code></pre>
+<h3 id="3-data-movement-patterns">3. <strong>Data Movement Patterns</strong></h3>
+<h4 id="lhs-data-movement-dmlhs"><strong>LHS Data Movement (dm_lhs)</strong></h4>
+<ul>
+<li><strong>Source Cores</strong>: Leftmost column (cx == 0)</li>
+<li><strong>Target Cores</strong>: All cores in the same row</li>
+<li><strong>Pattern</strong>: Row-wise multicast</li>
+<li><strong>Optimization</strong>: Single fetch, multiple recipients</li>
+</ul>
+<h4 id="rhs-data-movement-dmrhs"><strong>RHS Data Movement (dm_rhs)</strong></h4>
+<ul>
+<li><strong>Source Cores</strong>: Topmost row (cy == 0)</li>
+<li><strong>Target Cores</strong>: All cores in the same column</li>
+<li><strong>Pattern</strong>: Column-wise multicast</li>
+<li><strong>Optimization</strong>: Single fetch, multiple recipients</li>
+</ul>
+<h2 id="performance-optimizations">Performance Optimizations</h2>
+<h3 id="1-memory-hierarchy-optimization">1. <strong>Memory Hierarchy Optimization</strong></h3>
+<ul>
+<li><strong>L1 Cache</strong>: Store frequently accessed tiles</li>
+<li><strong>L2 Cache</strong>: Shared across cores for data reuse</li>
+<li><strong>SRAM</strong>: Per-core storage for active computation</li>
+<li><strong>Circular Buffers</strong>: Double buffering for smooth execution</li>
+</ul>
+<h3 id="2-network-on-chip-utilization">2. <strong>Network-on-Chip Utilization</strong></h3>
+<ul>
+<li><strong>Multicast Operations</strong>: Efficient data distribution</li>
+<li><strong>Pipelined Transfers</strong>: Overlap computation and communication</li>
+<li><strong>Bandwidth Optimization</strong>: Minimize redundant transfers</li>
+</ul>
+<h3 id="3-load-balancing">3. <strong>Load Balancing</strong></h3>
+<ul>
+<li><strong>Dynamic Tiling</strong>: Adapts to matrix dimensions</li>
+<li><strong>Core Utilization</strong>: Maximizes parallel execution</li>
+<li><strong>Memory Distribution</strong>: Even load across cores</li>
+</ul>
+<h2 id="scalability-features">Scalability Features</h2>
+<h3 id="1-multi-chip-support">1. <strong>Multi-Chip Support</strong></h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Future extension for multi-chip scaling</span>
+<span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">calculate_multi_chip_grid</span><span class="hljs-params">(total_cores, chips_available)</span>:</span>
+    cores_per_chip = total_cores // chips_available
+    <span class="hljs-keyword">return</span> distribute_cores_across_chips(cores_per_chip, chips_available)
+</div></code></pre>
+<h3 id="2-memory-scaling">2. <strong>Memory Scaling</strong></h3>
+<ul>
+<li><strong>Hierarchical Memory</strong>: L1 → L2 → HBM → DDR</li>
+<li><strong>Data Streaming</strong>: Continuous data flow</li>
+<li><strong>Cache Coherence</strong>: Efficient data sharing</li>
+</ul>
+<h3 id="3-compute-scaling">3. <strong>Compute Scaling</strong></h3>
+<ul>
+<li><strong>Spatial Parallelism</strong>: Multiple cores working simultaneously</li>
+<li><strong>Temporal Parallelism</strong>: Pipelined execution</li>
+<li><strong>Instruction Parallelism</strong>: SIMD operations within cores</li>
+</ul>
+<h2 id="test-cases">Test Cases</h2>
+<p>The implementation includes comprehensive test cases:</p>
+<h3 id="matrix-size-categories"><strong>Matrix Size Categories</strong></h3>
+<ol>
+<li><strong>Small (32×32, 64×64)</strong>: Single core optimization with 32-element tiles</li>
+<li><strong>Medium (128×128, 256×256)</strong>: Multi-core utilization</li>
+<li><strong>Large (512×512)</strong>: Full grid utilization</li>
+<li><strong>Very Large (1024×1024)</strong>: Maximum scaling</li>
+<li><strong>Rectangular</strong>: Aspect ratio optimization (32-element aligned)</li>
+<li><strong>Extreme Aspect Ratios</strong>: Edge case handling (32-element aligned)</li>
+</ol>
+<h3 id="performance-metrics"><strong>Performance Metrics</strong></h3>
+<ul>
+<li><strong>Frobenius Relative Error</strong>: Matrix-specific accuracy</li>
+<li><strong>L2 Relative Error</strong>: Alternative accuracy measure</li>
+<li><strong>Absolute Error</strong>: Raw difference magnitude</li>
+<li><strong>PCC (Pearson Correlation Coefficient)</strong>: Statistical validation</li>
+</ul>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="basic-usage"><strong>Basic Usage</strong></h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Automatic configuration</span>
+lhs = torch.randn(<span class="hljs-number">512</span>, <span class="hljs-number">256</span>)
+rhs = torch.randn(<span class="hljs-number">256</span>, <span class="hljs-number">1024</span>)
+out = torch.zeros(<span class="hljs-number">512</span>, <span class="hljs-number">1024</span>)
+
+generalized_matmul(lhs, rhs, out)
+</div></code></pre>
+<h3 id="custom-configuration"><strong>Custom Configuration</strong></h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Manual configuration</span>
+grid_dims = (<span class="hljs-number">4</span>, <span class="hljs-number">4</span>)
+block_factors = [(<span class="hljs-number">32</span>, <span class="hljs-number">16</span>), (<span class="hljs-number">16</span>, <span class="hljs-number">64</span>), (<span class="hljs-number">32</span>, <span class="hljs-number">64</span>)]
+
+generalized_matmul(lhs, rhs, out, block_factors, grid_dims)
+</div></code></pre>
+<h3 id="performance-testing"><strong>Performance Testing</strong></h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Comprehensive testing</span>
+run_matmul_test(<span class="hljs-number">1024</span>, <span class="hljs-number">1024</span>, <span class="hljs-number">1024</span>, max_cores_per_dim=<span class="hljs-number">8</span>, max_tile_size=<span class="hljs-number">128</span>)
+</div></code></pre>
+<h2 id="future-enhancements">Future Enhancements</h2>
+<h3 id="1-multi-chip-scaling">1. <strong>Multi-Chip Scaling</strong></h3>
+<ul>
+<li>Automatic chip detection and utilization</li>
+<li>Inter-chip communication optimization</li>
+<li>Load balancing across multiple chips</li>
+</ul>
+<h3 id="2-advanced-optimizations">2. <strong>Advanced Optimizations</strong></h3>
+<ul>
+<li><strong>Mixed Precision</strong>: FP16/FP32 optimization</li>
+<li><strong>Sparse Matrices</strong>: Sparse matrix support</li>
+<li><strong>Batch Operations</strong>: Multiple matrix multiplication</li>
+</ul>
+<h3 id="3-compiler-integration">3. <strong>Compiler Integration</strong></h3>
+<ul>
+<li><strong>Auto-Tuning</strong>: Automatic parameter optimization</li>
+<li><strong>Profile-Guided</strong>: Runtime performance feedback</li>
+<li><strong>JIT Compilation</strong>: Just-in-time optimization</li>
+</ul>
+<h2 id="conclusion">Conclusion</h2>
+<p>The generalized matrix multiplication implementation provides:</p>
+<ul>
+<li><strong>Scalability</strong>: Handles matrices from 64×64 to 1024×1024+</li>
+<li><strong>Efficiency</strong>: Optimal core and memory utilization</li>
+<li><strong>Flexibility</strong>: Automatic and manual configuration options</li>
+<li><strong>Robustness</strong>: Comprehensive error checking and validation</li>
+<li><strong>Performance</strong>: Wormhole architecture optimization</li>
+</ul>
+<p>This implementation serves as a foundation for high-performance matrix operations on the Tenstorrent Wormhole architecture, enabling efficient computation of arbitrarily large matrices while maximizing hardware utilization.</p>
+
+</body>
+</html>
