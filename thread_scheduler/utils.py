@@ -5,6 +5,28 @@ Utility functions for the thread scheduler simulator.
 
 from typing import Dict, List, Tuple, Optional
 import inspect
+from .types import EventStatus
+
+
+def format_source_location(
+    source_file: Optional[str], source_line: Optional[int]
+) -> str:
+    """
+    Format source file and line number as a string (filename:line).
+
+    Args:
+        source_file: Path to source file
+        source_line: Line number in source file
+
+    Returns:
+        Formatted string "filename:line" or empty string if not available
+    """
+    if source_file and source_line:
+        import os
+
+        filename = os.path.basename(source_file)
+        return f"{filename}:{source_line}"
+    return ""
 
 
 def get_caller_location() -> Tuple[Optional[str], Optional[int]]:
@@ -52,10 +74,10 @@ def get_caller_location() -> Tuple[Optional[str], Optional[int]]:
     return None, None
 
 
-def print_example_header(example_num, title, description, scheduler_info):
+def print_example_header(title, description, scheduler_info):
     """Print a standardized header for examples."""
     print("\n" + "=" * 80)
-    print(f"EXAMPLE {example_num}: {title}")
+    print(f"Program: {title}")
     print("=" * 80)
     print(f"Description: {description}")
     print(f"Scheduler: {scheduler_info}")
@@ -84,7 +106,7 @@ def print_timeline(events, title="Execution Timeline", num_cores=None):
 
     for event in events:
         time_str = f"{event.start_time:.1f}s"
-        if event.status == "completed":
+        if event.status == EventStatus.COMPLETED:
             time_str += f" - {event.end_time:.1f}s"
 
         # Format source location if available
@@ -94,7 +116,7 @@ def print_timeline(events, title="Execution Timeline", num_cores=None):
             source_info = f"{filename}:{event.operation.source_line}"
 
         print(
-            f"{time_str:<12} {event.thread_name:<20} {str(event.operation):<40} {event.status:<12} {source_info:<30}"
+            f"{time_str:<12} {event.thread_name:<20} {str(event.operation):<40} {event.status.value:<12} {source_info:<30}"
         )
 
     print(f"{'-'*width}")
@@ -108,7 +130,7 @@ def print_timeline(events, title="Execution Timeline", num_cores=None):
             total_work = sum(
                 e.end_time - e.start_time
                 for e in events
-                if e.status == "completed" and e.end_time is not None
+                if e.status == EventStatus.COMPLETED and e.end_time is not None
             )
 
             # Calculate ideal time (if all work was perfectly parallelized)

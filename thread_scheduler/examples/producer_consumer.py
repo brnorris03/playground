@@ -13,7 +13,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from thread_scheduler import create_simulation, generate_perfetto_trace
-from thread_scheduler.utils import print_example_header, print_timeline, print_memory_state
+from thread_scheduler.utils import (
+    print_example_header,
+    print_timeline,
+    print_memory_state,
+)
 
 
 sim = create_simulation(num_cores=2)
@@ -39,7 +43,6 @@ def consumer():
 
 if __name__ == "__main__":
     print_example_header(
-        example_num=1,
         title="Producer-Consumer",
         description="Simple synchronization between producer and consumer threads.",
         scheduler_info="2 cores",

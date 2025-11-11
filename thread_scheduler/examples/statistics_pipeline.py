@@ -124,7 +124,6 @@ def worker9():
 
 if __name__ == "__main__":
     print_example_header(
-        example_num=5,
         title="Advanced Statistics Pipeline",
         description="Parallel computation pipeline with 10 threads and deep dependencies.",
         scheduler_info="4 cores (maximum parallelism)",

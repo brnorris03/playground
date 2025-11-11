@@ -8,6 +8,8 @@ import json
 import os
 from typing import List, Dict, Any
 from .simulator import ExecutionEvent
+from .types import EventStatus
+from .utils import format_source_location
 
 
 class PerfettoTraceGenerator:
@@ -155,7 +157,7 @@ class PerfettoTraceGenerator:
         for event in execution_events:
             timestamp_us = event.start_time * time_scale
 
-            if event.status == "completed":
+            if event.status == EventStatus.COMPLETED:
                 duration_us = event.duration() * time_scale
 
                 # Create operation description
@@ -170,12 +172,10 @@ class PerfettoTraceGenerator:
 
                 # Build event name with source location if available
                 event_name = event.operation.op_type.value
-                if event.operation.source_file and event.operation.source_line:
-                    import os
-
-                    # Use just the filename for brevity
-                    filename = os.path.basename(event.operation.source_file)
-                    source_loc = f"{filename}:{event.operation.source_line}"
+                source_loc = format_source_location(
+                    event.operation.source_file, event.operation.source_line
+                )
+                if source_loc:
                     args_dict["source"] = source_loc
                     # Add source to event name for visibility in timeline
                     event_name = f"{event.operation.op_type.value} @ {source_loc}"
@@ -191,11 +191,11 @@ class PerfettoTraceGenerator:
                     args=args_dict,
                 )
 
-            elif event.status == "blocked":
+            elif event.status == EventStatus.BLOCKED:
                 # Record the start of a blocked period
                 blocked_periods[event.thread_id] = (event.start_time, event)
 
-            elif event.status == "unblocked":
+            elif event.status == EventStatus.UNBLOCKED:
                 # End the blocked period and create a wait block
                 if event.thread_id in blocked_periods:
                     block_start_time, block_event = blocked_periods[event.thread_id]
@@ -209,11 +209,10 @@ class PerfettoTraceGenerator:
                     }
 
                     # Add source location if available
-                    if event.operation.source_file and event.operation.source_line:
-                        import os
-
-                        filename = os.path.basename(event.operation.source_file)
-                        source_loc = f"{filename}:{event.operation.source_line}"
+                    source_loc = format_source_location(
+                        event.operation.source_file, event.operation.source_line
+                    )
+                    if source_loc:
                         wait_args["source"] = source_loc
                         wait_name = f"wait (blocked) @ {source_loc}"
                     else:
@@ -233,6 +232,46 @@ class PerfettoTraceGenerator:
                     )
 
                     del blocked_periods[event.thread_id]
+
+        # Flush any remaining blocked periods (for threads that never unblocked)
+        for thread_id, (block_start_time, block_event) in blocked_periods.items():
+            # Create wait block for threads still blocked at end of simulation
+            final_time_for_block = max(
+                (e.end_time for e in execution_events if e.end_time is not None),
+                default=block_start_time,
+            )
+            block_duration = final_time_for_block - block_start_time
+
+            # Ensure minimum duration for visibility in Perfetto (e.g., 1 second for deadlocked threads)
+            if block_duration == 0:
+                block_duration = 0.5  # arbitrary minimum duration
+
+            wait_args = {
+                "operation": str(block_event.operation),
+                "thread": block_event.thread_name,
+                "reason": "waiting for data (never unblocked)",
+            }
+
+            source_loc = format_source_location(
+                block_event.operation.source_file, block_event.operation.source_line
+            )
+            if source_loc:
+                wait_args["source"] = source_loc
+                wait_name = f"wait (blocked) @ {source_loc}"
+            else:
+                wait_name = "wait (blocked)"
+
+            self.add_complete_event(
+                name=wait_name,
+                category="wait",
+                timestamp_us=block_start_time * time_scale,
+                duration_us=block_duration * time_scale,
+                pid=pid,
+                tid=thread_id,
+                args=wait_args,
+                color="generic_work",
+                alpha=0.3,
+            )
 
         # Add clear END OF TRACE marker for all threads
         final_time = 0.0

@@ -70,7 +70,6 @@ def worker4():
 
 if __name__ == "__main__":
     print_example_header(
-        example_num=0,
         title="Perfect Parallelism",
         description="Four independent workers achieving 100% efficiency on 4 cores",
         scheduler_info="4 cores",

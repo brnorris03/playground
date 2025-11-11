@@ -44,7 +44,6 @@ def worker2():
 
 if __name__ == "__main__":
     print_example_header(
-        example_num=0,
         title="Deadlock Detection Demo",
         description="Two threads waiting for each other - demonstrates deadlock detection",
         scheduler_info="2 cores",

@@ -6,6 +6,7 @@ Runs in a single Python thread with logical timestamps.
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
+from .types import ThreadState, EventStatus
 from enum import Enum
 
 
@@ -94,7 +95,7 @@ class Thread:
         self.name = name
         self.operations = operations
         self.pc = 0  # Program counter
-        self.state = "ready"  # ready, running, blocked, completed
+        self.state = ThreadState.READY
         self.blocked_on: Optional[str] = None  # Address we're waiting for
         self.just_unblocked = False  # Flag to track if we just unblocked
 
@@ -108,28 +109,28 @@ class Thread:
         """Move to the next operation."""
         self.pc += 1
         if self.pc >= len(self.operations):
-            self.state = "completed"
+            self.state = ThreadState.COMPLETED
 
     def is_ready(self, memory: Memory) -> bool:
         """Check if this thread is ready to execute."""
-        if self.state == "completed":
+        if self.state == ThreadState.COMPLETED:
             return False
 
-        if self.state == "blocked":
+        if self.state == ThreadState.BLOCKED:
             # Check if the blocking condition is resolved
             if self.blocked_on and memory.is_available(self.blocked_on):
-                self.state = "ready"
+                self.state = ThreadState.READY
                 self.blocked_on = None
                 self.just_unblocked = True  # Mark that we just unblocked
                 return True
             return False
 
-        return self.state == "ready"
+        return self.state == ThreadState.READY
 
     def reset(self):
         """Reset thread to initial state."""
         self.pc = 0
-        self.state = "ready"
+        self.state = ThreadState.READY
         self.blocked_on = None
         self.just_unblocked = False
 
@@ -190,7 +191,7 @@ class Scheduler:
                 return True
             else:
                 # Block the thread
-                thread.state = "blocked"
+                thread.state = ThreadState.BLOCKED
                 thread.blocked_on = address
                 return False
 
@@ -259,18 +260,18 @@ class Scheduler:
                 if (
                     event.thread_id == thread.thread_id
                     and event.operation == operation
-                    and event.status == "running"
+                    and event.status == EventStatus.RUNNING
                 ):
                     event.end_time = end_time
-                    event.status = "completed"
+                    event.status = EventStatus.COMPLETED
                     break
 
             thread.advance()
-            thread.state = "ready"
+            thread.state = ThreadState.READY
 
         # Check all blocked threads to see if they can now proceed
         for thread in self.threads:
-            if thread.state == "blocked":
+            if thread.state == ThreadState.BLOCKED:
                 thread.is_ready(self.memory)  # This will update state if unblocked
 
         # Try to schedule new operations on available cores
@@ -315,7 +316,7 @@ class Scheduler:
             idx, thread = selected
             operation = thread.current_operation()
             if operation is None:
-                thread.state = "completed"
+                thread.state = ThreadState.COMPLETED
                 continue  # Try next thread
 
             # Try to execute the operation
@@ -328,7 +329,7 @@ class Scheduler:
                     thread_name=thread.name,
                     operation=operation,
                     start_time=start_time,
-                    status="unblocked",
+                    status=EventStatus.UNBLOCKED,
                     end_time=start_time,
                 )
                 self.events.append(unblock_event)
@@ -339,7 +340,7 @@ class Scheduler:
                 thread_name=thread.name,
                 operation=operation,
                 start_time=start_time,
-                status="running",
+                status=EventStatus.RUNNING,
             )
 
             # Check if operation can start
@@ -349,14 +350,14 @@ class Scheduler:
                     # Data available, wait completes immediately (no separate event needed)
                     # The gray blocked period already shows the wait time
                     thread.advance()
-                    thread.state = "ready"
+                    thread.state = ThreadState.READY
                     scheduled_any = True
                     # Continue loop to try scheduling this thread's next operation
                 else:
                     # Block the thread
-                    thread.state = "blocked"
+                    thread.state = ThreadState.BLOCKED
                     thread.blocked_on = address
-                    event.status = "blocked"
+                    event.status = EventStatus.BLOCKED
                     event.end_time = start_time
                     self.events.append(event)
                     scheduled_any = True
@@ -365,16 +366,21 @@ class Scheduler:
                 # Non-wait operation: schedule it to run
                 end_time = start_time + operation.duration
                 self.running_operations.append((thread, operation, end_time))
-                thread.state = "running"
+                thread.state = ThreadState.RUNNING
                 self.events.append(event)
                 scheduled_any = True
                 # Continue to try scheduling more threads on other cores
 
-        # Advance time to next event
+        # Advance time to next event (jump to earliest completion time)
+        # This ensures we don't miss any operation completions, even with variable durations
         if self.running_operations:
             next_completion = min(
                 end_time for _, _, end_time in self.running_operations
             )
+            # Verify we're advancing time forward
+            assert (
+                next_completion >= self.current_time
+            ), f"Time must advance forward: {self.current_time} -> {next_completion}"
             self.current_time = next_completion
             return True
         elif scheduled_any:
@@ -392,7 +398,9 @@ class Scheduler:
             made_progress = self.step()
             if not made_progress:
                 # Check if all threads are completed
-                all_completed = all(t.state == "completed" for t in self.threads)
+                all_completed = all(
+                    t.state == ThreadState.COMPLETED for t in self.threads
+                )
                 if all_completed:
                     break
                 # All threads are blocked, deadlock
@@ -402,7 +410,9 @@ class Scheduler:
                 import os
 
                 for thread in self.threads:
-                    if thread.state == "blocked" and thread.pc < len(thread.operations):
+                    if thread.state == ThreadState.BLOCKED and thread.pc < len(
+                        thread.operations
+                    ):
                         op = thread.operations[thread.pc]
                         source_info = ""
                         if op.source_file and op.source_line:

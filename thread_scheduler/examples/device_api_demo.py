@@ -68,7 +68,6 @@ def worker3():
 
 if __name__ == "__main__":
     print_example_header(
-        example_num=0,
         title="Device API Demo",
         description="Clean API using dev.write(), dev.add(), dev.push(), etc.",
         scheduler_info="4 cores",

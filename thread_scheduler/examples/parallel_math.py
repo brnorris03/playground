@@ -13,7 +13,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from thread_scheduler import create_simulation, generate_perfetto_trace
-from thread_scheduler.utils import print_example_header, print_timeline, print_memory_state
+from thread_scheduler.utils import (
+    print_example_header,
+    print_timeline,
+    print_memory_state,
+)
 
 import sys
 
@@ -66,7 +70,6 @@ def worker3():
 
 if __name__ == "__main__":
     print_example_header(
-        example_num=4,
         title="Parallel Math Operations",
         description="Multiple threads with complex dependencies computing in parallel.",
         scheduler_info="4 cores (maximum parallelism)",
