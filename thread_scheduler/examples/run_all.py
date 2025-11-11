@@ -16,6 +16,7 @@ examples = [
     "math_pipeline.py",
     "multi_consumer.py",
     "parallel_math.py",
+    "perfect_parallelism.py",
     "producer_consumer.py",
     "statistics_pipeline.py",
 ]

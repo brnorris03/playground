@@ -64,6 +64,7 @@ python3 -m examples.math_pipeline
 python3 -m examples.parallel_math
 python3 -m examples.statistics_pipeline
 python3 -m examples.device_api_demo
+python3 -m examples.perfect_parallelism
 python3 -m examples.deadlock_demo
 ```
 
@@ -286,7 +287,25 @@ Run with: `python3 -m examples.statistics_pipeline`
 
 Trace file: `traces/trace_statistics_pipeline.json`
 
-### Example 6: Deadlock Detection
+### Example 6: Perfect Parallelism
+
+Demonstrates optimal parallel execution achieving 100% efficiency on 4 cores by using an embarrassingly parallel workload.
+
+Four completely independent workers execute simultaneously with no dependencies or blocking. Each worker performs exactly 4 operations (2 writes, 1 add, 1 push), and all workers start at time 0 and finish at time 4. All 4 cores are continuously busy for the entire duration, achieving perfect utilization.
+
+Why this achieves 100% efficiency:
+- All 4 workers are completely independent (no dependencies between threads)
+- Each worker performs exactly 4 operations taking 4 seconds total
+- All workers start simultaneously and finish simultaneously
+- Total work: 16 operations × 1s = 16 seconds
+- Execution time: 4 seconds on 4 cores = 16 core-seconds utilized
+- Efficiency: 16s / (4 cores × 4s) = 100%
+
+Run with: `python3 -m examples.perfect_parallelism`
+
+Trace file: `traces/trace_perfect_parallelism.json`
+
+### Example 7: Deadlock Detection
 
 Demonstrates deadlock detection when two threads wait for each other.
 
