@@ -7,7 +7,7 @@ Generates JSON traces compatible with https://ui.perfetto.dev
 import json
 import os
 from typing import List, Dict, Any
-from simulator import ExecutionEvent
+from .simulator import ExecutionEvent
 
 
 class PerfettoTraceGenerator:
@@ -180,6 +180,28 @@ class PerfettoTraceGenerator:
                     },
                 )
 
+        # Add clear END OF TRACE marker for all threads
+        final_time = 0.0
+        if execution_events:
+            final_time = max(
+                e.end_time for e in execution_events if e.end_time is not None
+            )
+
+        end_marker_time = (final_time + 0.1) * time_scale
+        for tid in thread_ids:
+            self.add_instant_event(
+                name="🏁 END OF TRACE 🏁",
+                category="marker",
+                timestamp_us=end_marker_time,
+                pid=pid,
+                tid=tid,
+                scope="t",
+                args={
+                    "message": "Simulation completed",
+                    "final_time": f"{final_time}s",
+                },
+            )
+
         # Create the trace format
         trace = {
             "traceEvents": self.events,
@@ -203,11 +225,11 @@ class PerfettoTraceGenerator:
 
         Args:
             execution_events: List of execution events from the simulator
-            filename: Output filename (relative to traces/ directory by default)
+            filename: Output filename (relative to traces/ directory in current working dir)
             time_scale: Scale factor to convert logical time to microseconds
         """
-        # Create traces directory if it doesn't exist
-        traces_dir = "traces"
+        # Create traces directory in current working directory if it doesn't exist
+        traces_dir = os.path.join(os.getcwd(), "traces")
         os.makedirs(traces_dir, exist_ok=True)
 
         # If filename doesn't contain a directory, put it in traces/

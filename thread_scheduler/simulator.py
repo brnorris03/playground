@@ -14,6 +14,7 @@ class OpType(Enum):
 
     WAIT = "wait"
     WRITE = "write"
+    PUSH = "push"
     ADD = "add"
     MULTIPLY = "multiply"
     SUBTRACT = "subtract"
@@ -59,6 +60,15 @@ class Memory:
         """Write data to an address and mark it as available."""
         self.data[address] = value
         self.available[address] = True
+
+    def store(self, address: str, value: Any):
+        """Store data to an address WITHOUT marking it as available.
+
+        Used by math operations to compute intermediate results that
+        must be explicitly written before other threads can wait on them.
+        """
+        self.data[address] = value
+        # Don't set available[address] = True
 
     def read(self, address: str) -> Any:
         """Read data from an address."""
@@ -184,12 +194,18 @@ class Scheduler:
             self.memory.write(address, value)
             return True
 
+        elif operation.op_type == OpType.PUSH:
+            address = operation.args[0]
+            # Mark the address as available without changing its value
+            self.memory.available[address] = True
+            return True
+
         elif operation.op_type == OpType.ADD:
             addr1, addr2, dest = operation.args
             val1 = self.memory.read(addr1)
             val2 = self.memory.read(addr2)
             result = val1 + val2
-            self.memory.write(dest, result)
+            self.memory.store(dest, result)  # Store without marking available
             return True
 
         elif operation.op_type == OpType.MULTIPLY:
@@ -197,7 +213,7 @@ class Scheduler:
             val1 = self.memory.read(addr1)
             val2 = self.memory.read(addr2)
             result = val1 * val2
-            self.memory.write(dest, result)
+            self.memory.store(dest, result)  # Store without marking available
             return True
 
         elif operation.op_type == OpType.SUBTRACT:
@@ -205,7 +221,7 @@ class Scheduler:
             val1 = self.memory.read(addr1)
             val2 = self.memory.read(addr2)
             result = val1 - val2
-            self.memory.write(dest, result)
+            self.memory.store(dest, result)  # Store without marking available
             return True
 
         return False
@@ -253,10 +269,18 @@ class Scheduler:
                 thread.is_ready(self.memory)  # This will update state if unblocked
 
         # Try to schedule new operations on available cores
-        available_cores = self.num_cores - len(self.running_operations)
+        # Keep looping until no more operations can be scheduled at current time
         scheduled_any = False
+        max_iterations = 1000  # Prevent infinite loops
+        iteration = 0
 
-        while available_cores > 0:
+        while iteration < max_iterations:
+            iteration += 1
+            available_cores = self.num_cores - len(self.running_operations)
+
+            if available_cores <= 0:
+                break
+
             # Get ready threads that aren't currently running
             running_thread_ids = {t.thread_id for t, _, _ in self.running_operations}
             ready_threads = [
@@ -287,7 +311,7 @@ class Scheduler:
             operation = thread.current_operation()
             if operation is None:
                 thread.state = "completed"
-                break
+                continue  # Try next thread
 
             # Try to execute the operation
             start_time = self.current_time
@@ -307,12 +331,10 @@ class Scheduler:
                     event.end_time = start_time
                     event.status = "completed"
                     thread.advance()
-                    thread.state = (
-                        "ready"  # Make sure thread is ready for next operation
-                    )
+                    thread.state = "ready"
                     self.events.append(event)
                     scheduled_any = True
-                    # Don't break - continue to try scheduling more threads
+                    # Continue loop to try scheduling this thread's next operation
                 else:
                     # Block the thread
                     thread.state = "blocked"
@@ -321,15 +343,15 @@ class Scheduler:
                     event.end_time = start_time
                     self.events.append(event)
                     scheduled_any = True
-                    # Don't break - continue to try scheduling other threads
+                    # Continue to try scheduling other threads
             else:
                 # Non-wait operation: schedule it to run
                 end_time = start_time + operation.duration
                 self.running_operations.append((thread, operation, end_time))
                 thread.state = "running"
                 self.events.append(event)
-                available_cores -= 1
                 scheduled_any = True
+                # Continue to try scheduling more threads on other cores
 
         # Advance time to next event
         if self.running_operations:
