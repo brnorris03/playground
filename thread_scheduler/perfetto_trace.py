@@ -25,6 +25,8 @@ class PerfettoTraceGenerator:
         pid: int,
         tid: int,
         args: Dict[str, Any] = None,
+        color: str = None,
+        alpha: float = None,
     ):
         """
         Add a complete event (type 'X') to the trace.
@@ -37,6 +39,8 @@ class PerfettoTraceGenerator:
             pid: Process ID
             tid: Thread ID
             args: Optional arguments/metadata
+            color: Optional color name (e.g., 'grey', 'thread_state_sleeping')
+            alpha: Optional alpha/transparency (0.0-1.0, where 0.5 is 50% transparent)
         """
         event = {
             "name": name,
@@ -49,6 +53,11 @@ class PerfettoTraceGenerator:
         }
         if args:
             event["args"] = args
+        if color:
+            event["cname"] = color
+        if alpha is not None:
+            # Perfetto uses 0-255 for alpha, where 255 is opaque
+            event["alpha"] = int(alpha * 255)
         self.events.append(event)
 
     def add_instant_event(
@@ -139,6 +148,9 @@ class PerfettoTraceGenerator:
             args={"name": "Thread Scheduler Simulator"},
         )
 
+        # Group events by thread to track blocked periods
+        blocked_periods = {}  # thread_id -> (start_time, operation)
+
         # Convert execution events to trace events
         for event in execution_events:
             timestamp_us = event.start_time * time_scale
@@ -149,36 +161,78 @@ class PerfettoTraceGenerator:
                 # Create operation description
                 op_str = str(event.operation)
 
+                # Build args dict with source location if available
+                args_dict = {
+                    "operation": op_str,
+                    "thread": event.thread_name,
+                    "args": str(event.operation.args),
+                }
+
+                # Build event name with source location if available
+                event_name = event.operation.op_type.value
+                if event.operation.source_file and event.operation.source_line:
+                    import os
+
+                    # Use just the filename for brevity
+                    filename = os.path.basename(event.operation.source_file)
+                    source_loc = f"{filename}:{event.operation.source_line}"
+                    args_dict["source"] = source_loc
+                    # Add source to event name for visibility in timeline
+                    event_name = f"{event.operation.op_type.value} @ {source_loc}"
+
                 # Add complete event
                 self.add_complete_event(
-                    name=event.operation.op_type.value,
+                    name=event_name,
                     category="operation",
                     timestamp_us=timestamp_us,
                     duration_us=duration_us,
                     pid=pid,
                     tid=event.thread_id,
-                    args={
-                        "operation": op_str,
-                        "thread": event.thread_name,
-                        "args": str(event.operation.args),
-                    },
+                    args=args_dict,
                 )
 
             elif event.status == "blocked":
-                # Add instant event for blocked operation
-                self.add_instant_event(
-                    name=f"blocked_{event.operation.op_type.value}",
-                    category="blocked",
-                    timestamp_us=timestamp_us,
-                    pid=pid,
-                    tid=event.thread_id,
-                    scope="t",
-                    args={
+                # Record the start of a blocked period
+                blocked_periods[event.thread_id] = (event.start_time, event)
+
+            elif event.status == "unblocked":
+                # End the blocked period and create a wait block
+                if event.thread_id in blocked_periods:
+                    block_start_time, block_event = blocked_periods[event.thread_id]
+                    block_duration = event.start_time - block_start_time
+
+                    # Build args dict
+                    wait_args = {
                         "operation": str(event.operation),
                         "thread": event.thread_name,
                         "reason": "waiting for data",
-                    },
-                )
+                    }
+
+                    # Add source location if available
+                    if event.operation.source_file and event.operation.source_line:
+                        import os
+
+                        filename = os.path.basename(event.operation.source_file)
+                        source_loc = f"{filename}:{event.operation.source_line}"
+                        wait_args["source"] = source_loc
+                        wait_name = f"wait (blocked) @ {source_loc}"
+                    else:
+                        wait_name = "wait (blocked)"
+
+                    # Create a duration event for the blocked period (neutral gray, subtle)
+                    self.add_complete_event(
+                        name=wait_name,
+                        category="wait",
+                        timestamp_us=block_start_time * time_scale,
+                        duration_us=block_duration * time_scale,
+                        pid=pid,
+                        tid=event.thread_id,
+                        args=wait_args,
+                        color="generic_work",  # Neutral medium gray (125, 125, 125)
+                        alpha=0.3,  # 30% opacity
+                    )
+
+                    del blocked_periods[event.thread_id]
 
         # Add clear END OF TRACE marker for all threads
         final_time = 0.0

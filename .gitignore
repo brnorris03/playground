@@ -149,3 +149,4 @@ Thumbs.db
 # Project specific
 thread_scheduler/traces/*.json
 *.bak
+traces

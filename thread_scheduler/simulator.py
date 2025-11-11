@@ -4,8 +4,8 @@ Core simulator for multithreaded multicore device simulation.
 Runs in a single Python thread with logical timestamps.
 """
 
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 from enum import Enum
 
 
@@ -27,6 +27,8 @@ class Operation:
     op_type: OpType
     args: Tuple[Any, ...]
     duration: float = 1.0  # Default 1 second for all ops
+    source_file: Optional[str] = None  # Source file where operation was created
+    source_line: Optional[int] = None  # Line number where operation was created
 
     def __repr__(self):
         return f"{self.op_type.value}({', '.join(map(str, self.args))})"
@@ -94,6 +96,7 @@ class Thread:
         self.pc = 0  # Program counter
         self.state = "ready"  # ready, running, blocked, completed
         self.blocked_on: Optional[str] = None  # Address we're waiting for
+        self.just_unblocked = False  # Flag to track if we just unblocked
 
     def current_operation(self) -> Optional[Operation]:
         """Get the current operation to execute."""
@@ -117,6 +120,7 @@ class Thread:
             if self.blocked_on and memory.is_available(self.blocked_on):
                 self.state = "ready"
                 self.blocked_on = None
+                self.just_unblocked = True  # Mark that we just unblocked
                 return True
             return False
 
@@ -127,6 +131,7 @@ class Thread:
         self.pc = 0
         self.state = "ready"
         self.blocked_on = None
+        self.just_unblocked = False
 
 
 class Scheduler:
@@ -315,6 +320,20 @@ class Scheduler:
 
             # Try to execute the operation
             start_time = self.current_time
+
+            # If thread just unblocked, create an unblocked event
+            if thread.just_unblocked:
+                unblock_event = ExecutionEvent(
+                    thread_id=thread.thread_id,
+                    thread_name=thread.name,
+                    operation=operation,
+                    start_time=start_time,
+                    status="unblocked",
+                    end_time=start_time,
+                )
+                self.events.append(unblock_event)
+                thread.just_unblocked = False  # Clear the flag
+
             event = ExecutionEvent(
                 thread_id=thread.thread_id,
                 thread_name=thread.name,
@@ -327,12 +346,10 @@ class Scheduler:
             if operation.op_type == OpType.WAIT:
                 address = operation.args[0]
                 if self.memory.is_available(address):
-                    # Data available, wait completes immediately
-                    event.end_time = start_time
-                    event.status = "completed"
+                    # Data available, wait completes immediately (no separate event needed)
+                    # The gray blocked period already shows the wait time
                     thread.advance()
                     thread.state = "ready"
-                    self.events.append(event)
                     scheduled_any = True
                     # Continue loop to try scheduling this thread's next operation
                 else:
@@ -380,6 +397,19 @@ class Scheduler:
                     break
                 # All threads are blocked, deadlock
                 print(f"Warning: Deadlock detected at time {self.current_time}")
+
+                # Show which operations are blocked
+                import os
+
+                for thread in self.threads:
+                    if thread.state == "blocked" and thread.pc < len(thread.operations):
+                        op = thread.operations[thread.pc]
+                        source_info = ""
+                        if op.source_file and op.source_line:
+                            filename = os.path.basename(op.source_file)
+                            source_info = f" @ {filename}:{op.source_line}"
+                        print(f"  - {thread.name}: blocked on {op}{source_info}")
+
                 break
             steps += 1
 
@@ -407,5 +437,16 @@ def create_operation(op_type: str, *args, duration: float = 1.0) -> Operation:
         *args: Variable arguments depending on operation type
         duration: Duration of the operation in seconds (default: 1.0)
     """
+    from .utils import get_caller_location
+
+    # Capture caller's source location
+    source_file, source_line = get_caller_location()
+
     op_type_enum = OpType(op_type)
-    return Operation(op_type=op_type_enum, args=args, duration=duration)
+    return Operation(
+        op_type=op_type_enum,
+        args=args,
+        duration=duration,
+        source_file=source_file,
+        source_line=source_line,
+    )
