@@ -3,7 +3,15 @@
 Device class providing a clean API for creating operations.
 """
 
-from .simulator import Operation, OpType
+from .simulator import (
+    Operation,
+    WaitOp,
+    WriteOp,
+    PushOp,
+    AddOp,
+    SubtractOp,
+    MultiplyOp,
+)
 from .utils import get_caller_location
 from .config import OPERATION_DURATIONS
 from typing import Any
@@ -33,18 +41,19 @@ class Device:
         """
         self.default_duration = default_duration
 
-    def _create_op(self, op_type: str, *args, duration: float = None) -> Operation:
+    def _create_op(
+        self, op_class: type, *args, duration: float = None, **kwargs
+    ) -> Operation:
         """Helper method to create operations with source location tracking."""
         # Capture caller's source location (automatically finds first frame outside package)
         source_file, source_line = get_caller_location()
 
-        op_type_enum = OpType(op_type)
-        return Operation(
-            op_type=op_type_enum,
-            args=args,
+        return op_class(
+            *args,
             duration=duration or self.default_duration,
             source_file=source_file,
             source_line=source_line,
+            **kwargs,
         )
 
     # Synchronization operations
@@ -61,7 +70,7 @@ class Device:
             Wait operation
         """
         return self._create_op(
-            "wait",
+            WaitOp,
             address,
             duration=duration if duration is not None else OPERATION_DURATIONS["wait"],
         )
@@ -78,7 +87,7 @@ class Device:
             Push operation
         """
         return self._create_op(
-            "push",
+            PushOp,
             address,
             duration=duration if duration is not None else OPERATION_DURATIONS["push"],
         )
@@ -87,7 +96,7 @@ class Device:
 
     def write(self, address: str, value: Any, duration: float = None) -> Operation:
         """
-        Write value to address and mark as available.
+        Write value to address (does NOT mark as available - use push() for that).
 
         Args:
             address: Memory address to write to
@@ -98,7 +107,7 @@ class Device:
             Write operation
         """
         return self._create_op(
-            "write",
+            WriteOp,
             address,
             value,
             duration=duration if duration is not None else OPERATION_DURATIONS["write"],
@@ -122,7 +131,7 @@ class Device:
             Add operation
         """
         return self._create_op(
-            "add",
+            AddOp,
             addr1,
             addr2,
             dest,
@@ -145,7 +154,7 @@ class Device:
             Subtract operation
         """
         return self._create_op(
-            "subtract",
+            SubtractOp,
             addr1,
             addr2,
             dest,
@@ -170,7 +179,7 @@ class Device:
             Multiply operation
         """
         return self._create_op(
-            "multiply",
+            MultiplyOp,
             addr1,
             addr2,
             dest,

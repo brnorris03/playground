@@ -25,10 +25,10 @@ Requirements: Python 3.10+
 2. **Thread**: Sequence of operations
 3. **Scheduler**: Round-robin scheduler managing thread execution
 4. **Operations**: 
-   - `wait(address)`: Block until data available (blocks immediately, no overhead when completing)
-   - `write(address, value)`: Write data, mark available (1s, non-preemptible)
-   - `push(address)`: Mark computed data available (0.2s, non-preemptible)
-   - `add/multiply/subtract(addr1, addr2, dest)`: Compute and store (1s each, non-preemptible)
+   - `wait(address)`: Block until data available (preemptible, no overhead)
+   - `write(address, value)`: Store literal value (1s, non-preemptible, requires push to make available)
+   - `push(address)`: Mark data as available (0.2s, non-preemptible)
+   - `add/multiply/subtract(addr1, addr2, dest)`: Compute and store result (1s each, non-preemptible, requires push to make available)
 
 ### Scheduling
 
@@ -100,7 +100,9 @@ dev = sim.dev  # Get device instance
 def host():
     return [
         dev.write("x", 42),
+        dev.push("x"),
         dev.write("y", 10),
+        dev.push("y"),
     ]
 
 @sim.thread(name="worker")
@@ -124,13 +126,13 @@ print_memory_state(sim.get_memory())
 #### Available Device Methods
 
 - `dev.wait(address)` - Wait for data availability
-- `dev.write(address, value)` - Write and mark available
-- `dev.push(address)` - Mark computed data available
-- `dev.add(addr1, addr2, dest)` - Add operation
-- `dev.subtract(addr1, addr2, dest)` - Subtract operation
-- `dev.multiply(addr1, addr2, dest)` - Multiply operation
+- `dev.write(address, value)` - Store literal value (requires push to make available)
+- `dev.push(address)` - Mark data as available
+- `dev.add(addr1, addr2, dest)` - Add two values and store result (requires push to make available)
+- `dev.subtract(addr1, addr2, dest)` - Subtract and store result (requires push to make available)
+- `dev.multiply(addr1, addr2, dest)` - Multiply and store result (requires push to make available)
 
-All methods accept an optional `duration` parameter to customize operation time.
+All methods accept an optional `duration` parameter to customize operation time. Durations default to values in `config.py`.
 
 ### Efficiency Statistics
 
@@ -156,16 +158,20 @@ Efficiency Statistics:
 
 Host writes data, worker waits for availability.
 
-Note: `wait` blocks until data is available but does not read the value. Math operations read from addresses and compute results but require explicit `push` to make results available.
+Note: `wait` blocks until data is available but does not read the value. All data must be made available with an explicit `push` before other threads can read it.
 
 ```
 Time         Thread               Operation                      Status       Source                        
 ------------------------------------------------------------------------------------------------------------
 0.0s - 1.0s  host                 write('x', 42)                 completed    example.py:25
+0.0s - 0.2s  host                 push('x')                      completed    example.py:26
 0.0s         worker               wait('x')                      blocked      example.py:33
-1.0s         worker               wait('x')                      unblocked    example.py:33
-1.0s - 2.0s  worker               write('result', 100)           completed    example.py:34
+0.2s         worker               wait('x')                      unblocked    example.py:33
+0.2s - 1.2s  worker               write('result', 100)           completed    example.py:34
+1.2s - 1.4s  worker               push('result')                 completed    example.py:35
 ```
+
+Wait has no duration - it completes immediately when data is available or remains blocked until data arrives.
 
 ### Example 2: Producer-Consumer
 
@@ -178,7 +184,7 @@ Math operations with dependencies:
 - Thread2: computes sum=a+b, pushes result
 - Thread3: computes product=sum*c, pushes result
 
-Math operations store results but do not make them available. `push` is required to make results visible.
+Math operations store results but do not make them available. `push` is required to make results available to other threads.
 
 ### Example 4: More complex dependencies
 
@@ -196,36 +202,42 @@ Dependency graph with multiple threads on 4 cores.
 ```
 Time         Thread               Operation                      Status       Source                        
 ------------------------------------------------------------------------------------------------------------
-0.0s - 1.0s  host                 write(x, 10)                   completed    parallel_math.py:29
-0.0s         worker1_subtract     wait(x)                        blocked      parallel_math.py:38
-0.0s         worker2_add          wait(x)                        blocked      parallel_math.py:49
-0.0s         worker3_multiply     wait(sum)                      blocked      parallel_math.py:60
-1.0s - 2.0s  host                 write(y, 20)                   completed    parallel_math.py:30
-1.0s         worker1_subtract     wait(x)                        unblocked    parallel_math.py:38
-1.0s         worker2_add          wait(x)                        unblocked    parallel_math.py:49
-1.0s         worker1_subtract     wait(y)                        blocked      parallel_math.py:39
-1.0s         worker2_add          wait(y)                        blocked      parallel_math.py:50
-2.0s         worker1_subtract     wait(y)                        unblocked    parallel_math.py:39
-2.0s         worker2_add          wait(y)                        unblocked    parallel_math.py:50
-2.0s - 3.0s  worker1_subtract     subtract(x, y, diff)           completed    parallel_math.py:40
-2.0s - 3.0s  worker2_add          add(x, y, sum)                 completed    parallel_math.py:51
-3.0s         worker3_multiply     wait(sum)                      unblocked    parallel_math.py:60
-3.0s         worker3_multiply     wait(diff)                     unblocked    parallel_math.py:61
-3.0s - 4.0s  worker3_multiply     multiply(sum, diff, result)    completed    parallel_math.py:62
-4.0s - 4.2s  worker3_multiply     push(result)                   completed    parallel_math.py:63
+0.0s - 1.0s  host                 write(x, 10)                   completed    parallel_math.py:33
+1.0s - 1.2s  host                 push(x)                        completed    parallel_math.py:34
+1.2s - 2.2s  host                 write(y, 20)                   completed    parallel_math.py:35
+2.2s - 2.4s  host                 push(y)                        completed    parallel_math.py:36
+1.0s         worker1_subtract     wait(x)                        blocked      parallel_math.py:42
+1.0s         worker2_add          wait(x)                        blocked      parallel_math.py:51
+2.4s         worker1_subtract     wait(x)                        unblocked    parallel_math.py:42
+2.4s         worker2_add          wait(x)                        unblocked    parallel_math.py:51
+2.4s - 3.4s  worker1_subtract     wait(y)                        blocked      parallel_math.py:43
+2.4s - 3.4s  worker2_add          wait(y)                        blocked      parallel_math.py:52
+3.4s         worker1_subtract     wait(y)                        unblocked    parallel_math.py:43
+3.4s         worker2_add          wait(y)                        unblocked    parallel_math.py:52
+3.4s - 4.4s  worker1_subtract     subtract(x, y, diff)           completed    parallel_math.py:44
+3.4s - 4.4s  worker2_add          add(x, y, sum)                 completed    parallel_math.py:53
+4.4s - 4.6s  worker1_subtract     push(diff)                     completed    parallel_math.py:45
+4.4s - 4.6s  worker2_add          push(sum)                      completed    parallel_math.py:54
+4.6s         worker3_multiply     wait(sum)                      unblocked    parallel_math.py:62
+4.6s - 5.6s  worker3_multiply     wait(diff)                     blocked      parallel_math.py:63
+5.6s         worker3_multiply     wait(diff)                     unblocked    parallel_math.py:63
+5.6s - 6.6s  worker3_multiply     multiply(sum, diff, result)    completed    parallel_math.py:64
+6.6s - 6.8s  worker3_multiply     push(result)                   completed    parallel_math.py:65
 ------------------------------------------------------------------------------------------------------------
-Total execution time: 4.2s
+Total execution time: 6.8s
 ```
 
 #### Analysis
 
-**0.0s - 1.0s**: Host writes x=10. Workers block.
+**0.0s - 1.2s**: Host writes and pushes x=10. Workers block on wait(x).
 
-**1.0s - 2.0s**: Host writes y=20. Worker1/2 unblock from wait(x), then block on wait(y).
+**1.2s - 2.4s**: Host writes and pushes y=20. Worker1/2 unblock from wait(x).
 
-**2.0s - 3.0s**: Worker1/2 compute in parallel (diff=-10, sum=30).
+**2.4s - 3.4s**: Worker1/2 block on wait(y).
 
-**3.0s - 4.0s**: Worker3 computes result=-300.
+**3.4s - 4.6s**: Worker1/2 compute in parallel (diff=-10, sum=30) and push results.
+
+**4.6s - 6.8s**: Worker3 waits for data, then computes and pushes result=-300.
 
 #### Final Results
 ```
@@ -267,16 +279,16 @@ Run: `python3 -m examples.deadlock_demo`
 ## Operation Reference
 
 ### wait(address)
-Block until data available. Preemptible. No duration overhead - completes immediately when data becomes available. The simulated core is considered idle during "wait" events.
+Block until data available. Preemptible. Duration: 0s (no overhead). The simulated core is considered idle during "wait" events.
 
 ### write(address, value)
-Write value, mark available. Duration: 1s. Non-preemptible.
+Store literal value to address. Does NOT make data available. Duration: 1s. Non-preemptible. Requires `push(address)` to make available.
 
 ### push(address)
-Mark computed data available. Duration: 0.2s. Non-preemptible.
+Mark data as available. Duration: 0.2s. Non-preemptible. Works for both literal writes and computed results.
 
 ### add/multiply/subtract(addr1, addr2, dest)
-Compute `dest = addr1 OP addr2`. Store result but do not mark available. Duration: 1s. Non-preemptible. Requires `push(dest)` to make result visible.
+Compute `dest = addr1 OP addr2`. Store result but do NOT make available. Duration: 1s. Non-preemptible. Requires `push(dest)` to make result available.
 
 ## Perfetto Trace Format
 

@@ -31,6 +31,7 @@ def producer():
     """Produce data for consumers."""
     return [
         dev.write("data", 100),
+        dev.push("data"),
     ]
 
 
@@ -40,6 +41,7 @@ def consumer1():
     return [
         dev.wait("data"),
         dev.write("result1", 200),
+        dev.push("result1"),
     ]
 
 
@@ -49,6 +51,7 @@ def consumer2():
     return [
         dev.wait("data"),
         dev.write("result2", 300),
+        dev.push("result2"),
     ]
 
 

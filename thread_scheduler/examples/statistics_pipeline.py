@@ -13,7 +13,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from thread_scheduler import create_simulation, generate_perfetto_trace
-from thread_scheduler.utils import print_example_header, print_timeline, print_memory_state
+from thread_scheduler.utils import (
+    print_example_header,
+    print_timeline,
+)
 
 import sys
 
@@ -26,9 +29,13 @@ dev = sim.dev  # Get device instance
 def host():
     return [
         dev.write("a", 10),
+        dev.push("a"),
         dev.write("b", 20),
+        dev.push("b"),
         dev.write("c", 30),
+        dev.push("c"),
         dev.write("d", 40),
+        dev.push("d"),
     ]
 
 

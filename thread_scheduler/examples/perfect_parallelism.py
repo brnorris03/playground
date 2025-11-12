@@ -29,7 +29,9 @@ def worker1():
     """Compute result1 independently."""
     return [
         dev.write("a", 10),
+        dev.push("a"),
         dev.write("b", 20),
+        dev.push("b"),
         dev.add("a", "b", "result1"),
         dev.push("result1"),
     ]
@@ -40,7 +42,9 @@ def worker2():
     """Compute result2 independently."""
     return [
         dev.write("c", 30),
+        dev.push("c"),
         dev.write("d", 40),
+        dev.push("d"),
         dev.add("c", "d", "result2"),
         dev.push("result2"),
     ]
@@ -51,7 +55,9 @@ def worker3():
     """Compute result3 independently."""
     return [
         dev.write("e", 50),
+        dev.push("e"),
         dev.write("f", 60),
+        dev.push("f"),
         dev.add("e", "f", "result3"),
         dev.push("result3"),
     ]
@@ -62,7 +68,9 @@ def worker4():
     """Compute result4 independently."""
     return [
         dev.write("g", 70),
+        dev.push("g"),
         dev.write("h", 80),
+        dev.push("h"),
         dev.add("g", "h", "result4"),
         dev.push("result4"),
     ]

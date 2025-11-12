@@ -31,7 +31,9 @@ def initializer():
     """Initialize input values."""
     return [
         dev.write("a", 5),
+        dev.push("a"),
         dev.write("b", 3),
+        dev.push("b"),
     ]
 
 
@@ -52,6 +54,7 @@ def multiplier():
     return [
         dev.wait("sum"),
         dev.write("c", 2),
+        dev.push("c"),
         dev.multiply("sum", "c", "product"),
         dev.push("product"),
     ]

@@ -167,7 +167,6 @@ class PerfettoTraceGenerator:
                 args_dict = {
                     "operation": op_str,
                     "thread": event.thread_name,
-                    "args": str(event.operation.args),
                 }
 
                 # Build event name with source location if available

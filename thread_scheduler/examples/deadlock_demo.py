@@ -30,6 +30,7 @@ def worker1():
     return [
         dev.wait("data_from_worker2"),
         dev.write("data_from_worker1", 100),
+        dev.push("data_from_worker1"),
     ]
 
 
@@ -39,6 +40,7 @@ def worker2():
     return [
         dev.wait("data_from_worker1"),
         dev.write("data_from_worker2", 200),
+        dev.push("data_from_worker2"),
     ]
 
 

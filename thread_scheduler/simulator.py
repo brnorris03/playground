@@ -4,6 +4,8 @@ Core simulator for multithreaded multicore device simulation.
 Runs in a single Python thread with logical timestamps.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 from .types import ThreadState, EventStatus
@@ -21,18 +23,173 @@ class OpType(Enum):
     SUBTRACT = "subtract"
 
 
-@dataclass
 class Operation:
-    """Represents a single operation to be executed."""
+    """Base class for all operations."""
 
-    op_type: OpType
-    args: Tuple[Any, ...]
-    duration: float = 1.0  # Default 1 second for all ops
-    source_file: Optional[str] = None  # Source file where operation was created
-    source_line: Optional[int] = None  # Line number where operation was created
+    def __init__(
+        self,
+        duration: float = 1.0,
+        source_file: Optional[str] = None,
+        source_line: Optional[int] = None,
+    ):
+        self.duration = duration
+        self.source_file = source_file
+        self.source_line = source_line
+
+    def execute(self, memory: Memory, thread: Thread) -> bool:
+        """
+        Execute this operation.
+
+        Args:
+            memory: Memory instance to operate on
+            thread: Thread executing this operation
+
+        Returns:
+            True if operation completed, False if blocked
+        """
+        raise NotImplementedError("Subclasses must implement execute()")
 
     def __repr__(self):
-        return f"{self.op_type.value}({', '.join(map(str, self.args))})"
+        raise NotImplementedError("Subclasses must implement __repr__()")
+
+    @property
+    def op_type(self) -> OpType:
+        """Return the operation type for this operation."""
+        raise NotImplementedError("Subclasses must implement op_type property")
+
+
+class WaitOp(Operation):
+    """Wait for data to be available at an address."""
+
+    def __init__(self, address: str, **kwargs):
+        super().__init__(**kwargs)
+        self.address = address
+
+    def execute(self, memory: Memory, thread: Thread) -> bool:
+        if memory.is_available(self.address):
+            return True
+        else:
+            thread.state = ThreadState.BLOCKED
+            thread.blocked_on = self.address
+            return False
+
+    def __repr__(self):
+        return f"wait({self.address})"
+
+    @property
+    def op_type(self) -> OpType:
+        return OpType.WAIT
+
+
+class WriteOp(Operation):
+    """Write data to memory without marking it as available."""
+
+    def __init__(self, address: str, value: Any, **kwargs):
+        super().__init__(**kwargs)
+        self.address = address
+        self.value = value
+
+    def execute(self, memory: Memory, thread: Thread) -> bool:
+        memory.store(self.address, self.value)  # Use store instead of write
+        return True
+
+    def __repr__(self):
+        return f"write({self.address}, {self.value})"
+
+    @property
+    def op_type(self) -> OpType:
+        return OpType.WRITE
+
+
+class PushOp(Operation):
+    """Mark data as available without changing its value."""
+
+    def __init__(self, address: str, **kwargs):
+        super().__init__(**kwargs)
+        self.address = address
+
+    def execute(self, memory: Memory, thread: Thread) -> bool:
+        memory.available[self.address] = True
+        return True
+
+    def __repr__(self):
+        return f"push({self.address})"
+
+    @property
+    def op_type(self) -> OpType:
+        return OpType.PUSH
+
+
+class AddOp(Operation):
+    """Add two values and store the result."""
+
+    def __init__(self, addr1: str, addr2: str, dest: str, **kwargs):
+        super().__init__(**kwargs)
+        self.addr1 = addr1
+        self.addr2 = addr2
+        self.dest = dest
+
+    def execute(self, memory: Memory, thread: Thread) -> bool:
+        val1 = memory.read(self.addr1)
+        val2 = memory.read(self.addr2)
+        result = val1 + val2
+        memory.store(self.dest, result)
+        return True
+
+    def __repr__(self):
+        return f"add({self.addr1}, {self.addr2}, {self.dest})"
+
+    @property
+    def op_type(self) -> OpType:
+        return OpType.ADD
+
+
+class MultiplyOp(Operation):
+    """Multiply two values and store the result."""
+
+    def __init__(self, addr1: str, addr2: str, dest: str, **kwargs):
+        super().__init__(**kwargs)
+        self.addr1 = addr1
+        self.addr2 = addr2
+        self.dest = dest
+
+    def execute(self, memory: Memory, thread: Thread) -> bool:
+        val1 = memory.read(self.addr1)
+        val2 = memory.read(self.addr2)
+        result = val1 * val2
+        memory.store(self.dest, result)
+        return True
+
+    def __repr__(self):
+        return f"multiply({self.addr1}, {self.addr2}, {self.dest})"
+
+    @property
+    def op_type(self) -> OpType:
+        return OpType.MULTIPLY
+
+
+class SubtractOp(Operation):
+    """Subtract two values and store the result."""
+
+    def __init__(self, addr1: str, addr2: str, dest: str, **kwargs):
+        super().__init__(**kwargs)
+        self.addr1 = addr1
+        self.addr2 = addr2
+        self.dest = dest
+
+    def execute(self, memory: Memory, thread: Thread) -> bool:
+        val1 = memory.read(self.addr1)
+        val2 = memory.read(self.addr2)
+        result = val1 - val2
+        memory.store(self.dest, result)
+        return True
+
+    def __repr__(self):
+        return f"subtract({self.addr1}, {self.addr2}, {self.dest})"
+
+    @property
+    def op_type(self) -> OpType:
+        return OpType.SUBTRACT
 
 
 @dataclass
@@ -184,53 +341,7 @@ class Scheduler:
         Execute a single operation.
         Returns True if operation completed, False if blocked.
         """
-        if operation.op_type == OpType.WAIT:
-            address = operation.args[0]
-            if self.memory.is_available(address):
-                # Data is available, operation completes
-                return True
-            else:
-                # Block the thread
-                thread.state = ThreadState.BLOCKED
-                thread.blocked_on = address
-                return False
-
-        elif operation.op_type == OpType.WRITE:
-            address, value = operation.args
-            self.memory.write(address, value)
-            return True
-
-        elif operation.op_type == OpType.PUSH:
-            address = operation.args[0]
-            # Mark the address as available without changing its value
-            self.memory.available[address] = True
-            return True
-
-        elif operation.op_type == OpType.ADD:
-            addr1, addr2, dest = operation.args
-            val1 = self.memory.read(addr1)
-            val2 = self.memory.read(addr2)
-            result = val1 + val2
-            self.memory.store(dest, result)  # Store without marking available
-            return True
-
-        elif operation.op_type == OpType.MULTIPLY:
-            addr1, addr2, dest = operation.args
-            val1 = self.memory.read(addr1)
-            val2 = self.memory.read(addr2)
-            result = val1 * val2
-            self.memory.store(dest, result)  # Store without marking available
-            return True
-
-        elif operation.op_type == OpType.SUBTRACT:
-            addr1, addr2, dest = operation.args
-            val1 = self.memory.read(addr1)
-            val2 = self.memory.read(addr2)
-            result = val1 - val2
-            self.memory.store(dest, result)  # Store without marking available
-            return True
-
-        return False
+        return operation.execute(memory=self.memory, thread=thread)
 
     def step(self) -> bool:
         """
@@ -345,7 +456,7 @@ class Scheduler:
 
             # Check if operation can start
             if operation.op_type == OpType.WAIT:
-                address = operation.args[0]
+                address = operation.address  # WaitOp has address attribute
                 if self.memory.is_available(address):
                     # Data available, wait completes immediately (no separate event needed)
                     # The gray blocked period already shows the wait time
@@ -443,7 +554,7 @@ def create_operation(op_type: str, *args, duration: float = 1.0) -> Operation:
     """Helper function to create operations.
 
     Args:
-        op_type: Type of operation (wait, write, add, multiply, subtract)
+        op_type: Type of operation (wait, write, add, multiply, subtract, push)
         *args: Variable arguments depending on operation type
         duration: Duration of the operation in seconds (default: 1.0)
     """
@@ -452,11 +563,24 @@ def create_operation(op_type: str, *args, duration: float = 1.0) -> Operation:
     # Capture caller's source location
     source_file, source_line = get_caller_location()
 
-    op_type_enum = OpType(op_type)
-    return Operation(
-        op_type=op_type_enum,
-        args=args,
-        duration=duration,
-        source_file=source_file,
-        source_line=source_line,
-    )
+    # Create the appropriate operation subclass
+    kwargs = {
+        "duration": duration,
+        "source_file": source_file,
+        "source_line": source_line,
+    }
+
+    if op_type == "wait":
+        return WaitOp(args[0], **kwargs)
+    elif op_type == "write":
+        return WriteOp(args[0], args[1], **kwargs)
+    elif op_type == "push":
+        return PushOp(args[0], **kwargs)
+    elif op_type == "add":
+        return AddOp(args[0], args[1], args[2], **kwargs)
+    elif op_type == "multiply":
+        return MultiplyOp(args[0], args[1], args[2], **kwargs)
+    elif op_type == "subtract":
+        return SubtractOp(args[0], args[1], args[2], **kwargs)
+    else:
+        raise ValueError(f"Unknown operation type: {op_type}")

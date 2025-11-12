@@ -1,6 +1,19 @@
 """Thread Scheduler Simulator package."""
 
-from .simulator import Memory, Thread, Scheduler, create_operation, OpType, Operation
+from .simulator import (
+    Memory,
+    Thread,
+    Scheduler,
+    create_operation,
+    OpType,
+    Operation,
+    WaitOp,
+    WriteOp,
+    PushOp,
+    AddOp,
+    SubtractOp,
+    MultiplyOp,
+)
 from .device import Device
 from .decorators import create_simulation, SimulationBuilder
 from .perfetto_trace import generate_perfetto_trace, PerfettoTraceGenerator
@@ -21,6 +34,12 @@ __all__ = [
     "create_operation",
     "OpType",
     "Operation",
+    "WaitOp",
+    "WriteOp",
+    "PushOp",
+    "AddOp",
+    "SubtractOp",
+    "MultiplyOp",
     "Device",
     "create_simulation",
     "SimulationBuilder",

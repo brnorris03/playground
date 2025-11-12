@@ -29,7 +29,9 @@ def host():
     """Initialize input data using Device API."""
     return [
         dev.write("x", 10),
+        dev.push("x"),
         dev.write("y", 20),
+        dev.push("y"),
     ]
 
 
