@@ -135,12 +135,16 @@ class PerfettoTraceGenerator:
         if num_cores is None:
             num_cores = 3
 
-        # Add process name metadata (use tid=0 for process)
+        # Use separate PIDs for cores and blocked tracks to create groups
+        cores_pid = pid
+        blocked_pid = pid + 1
+
+        # Add process name metadata for cores (use tid=0 for process)
         self.add_metadata_event(
             name="process_name",
-            pid=pid,
+            pid=cores_pid,
             tid=0,
-            args={"name": "Thread Scheduler Simulator"},
+            args={"name": "Cores"},
         )
 
         # Create core metadata (cores as "threads" in Perfetto)
@@ -149,21 +153,22 @@ class PerfettoTraceGenerator:
             tid = core_id + 100
             self.add_metadata_event(
                 name="thread_name",
-                pid=pid,
+                pid=cores_pid,
                 tid=tid,
                 args={"name": f"Core {core_id}"},
             )
             # Also set thread sort index to ensure proper ordering
             self.add_metadata_event(
                 name="thread_sort_index",
-                pid=pid,
+                pid=cores_pid,
                 tid=tid,
                 args={"sort_index": core_id},
             )
 
         # Assign operations to cores based on start time
         # Track which core is free at each time point
-        core_assignments = {}  # event -> core_id
+        core_assignments = {}  # event_id -> core_id
+        event_adjusted_times = {}  # event_id -> (adjusted_start, adjusted_end)
         core_free_times = [0.0] * num_cores  # When each core becomes free
 
         # Sort completed events by start time to assign cores
@@ -173,34 +178,87 @@ class PerfettoTraceGenerator:
         completed_events.sort(key=lambda e: (e.start_time, e.thread_id))
 
         for event in completed_events:
-            # Find the first core that's free at event start time
+            # Find the first core that's free at or before event start time
             assigned_core = None
+            adjusted_start = event.start_time
+            adjusted_end = event.end_time
+
             for core_id in range(num_cores):
                 if core_free_times[core_id] <= event.start_time:
+                    # Core is free, assign immediately with original times
                     assigned_core = core_id
-                    core_free_times[core_id] = event.end_time
+                    # Add tiny gap (1 microsecond) to prevent Perfetto overlap errors at boundaries
+                    core_free_times[core_id] = event.end_time + 1e-6
                     break
 
             if assigned_core is None:
-                # All cores busy, assign to earliest-free core
+                # All cores busy - find the core that will be free earliest
                 assigned_core = core_free_times.index(min(core_free_times))
-                core_free_times[assigned_core] = event.end_time
+                # Adjust event to start when core becomes free
+                adjusted_start = core_free_times[assigned_core]
+                adjusted_end = adjusted_start + event.duration()
+                # Add tiny gap to prevent overlaps at boundaries
+                core_free_times[assigned_core] = adjusted_end + 1e-6
 
             core_assignments[id(event)] = assigned_core
+            event_adjusted_times[id(event)] = (adjusted_start, adjusted_end)
+
+        # Collect unique thread IDs that have blocked/unblocked events for metadata
+        blocked_thread_ids = set()
+        for event in execution_events:
+            if event.status in [EventStatus.BLOCKED, EventStatus.UNBLOCKED]:
+                blocked_thread_ids.add(event.thread_id)
+
+        # Add process name metadata for blocked tracks group
+        if blocked_thread_ids:
+            self.add_metadata_event(
+                name="process_name",
+                pid=blocked_pid,
+                tid=0,
+                args={"name": "Blocked Threads"},
+            )
+
+        # Create metadata for blocked thread tracks (tid = thread_id + 1000)
+        for thread_id in sorted(blocked_thread_ids):
+            # Find the thread name from events
+            thread_name = None
+            for event in execution_events:
+                if event.thread_id == thread_id:
+                    thread_name = event.thread_name
+                    break
+
+            if thread_name:
+                wait_tid = thread_id + 1000
+                self.add_metadata_event(
+                    name="thread_name",
+                    pid=blocked_pid,
+                    tid=wait_tid,
+                    args={"name": thread_name},
+                )
+                # Set sort index
+                self.add_metadata_event(
+                    name="thread_sort_index",
+                    pid=blocked_pid,
+                    tid=wait_tid,
+                    args={"sort_index": thread_id},
+                )
 
         # Group events by thread to track blocked periods
         blocked_periods = {}  # thread_id -> (start_time, operation, core_id)
 
         # Convert execution events to trace events
         for event in execution_events:
-            timestamp_us = event.start_time * time_scale
-
             if event.status == EventStatus.COMPLETED:
-                duration_us = event.duration() * time_scale
-
                 # Get assigned core for this event (add 100 for tid offset)
                 core_id = core_assignments.get(id(event), 0)
                 tid = core_id + 100
+
+                # Get adjusted times (or use original if not adjusted)
+                adjusted_start, adjusted_end = event_adjusted_times.get(
+                    id(event), (event.start_time, event.end_time)
+                )
+                timestamp_us = adjusted_start * time_scale
+                duration_us = (adjusted_end - adjusted_start) * time_scale
 
                 # Create operation description
                 op_str = str(event.operation)
@@ -221,13 +279,13 @@ class PerfettoTraceGenerator:
                     # Add source to event name for visibility in timeline
                     event_name = f"{event.thread_name}: {event.operation.op_type.value} @ {source_loc}"
 
-                # Add complete event (using tid with offset)
+                # Add complete event (using tid with offset and adjusted times)
                 self.add_complete_event(
                     name=event_name,
                     category="operation",
                     timestamp_us=timestamp_us,
                     duration_us=duration_us,
-                    pid=pid,
+                    pid=cores_pid,
                     tid=tid,
                     args=args_dict,
                 )
@@ -238,21 +296,10 @@ class PerfettoTraceGenerator:
 
             elif event.status == EventStatus.UNBLOCKED:
                 # End the blocked period and create a wait block
+                # Put wait blocks on separate thread-specific tracks to avoid overlaps with core operations
                 if event.thread_id in blocked_periods:
                     block_start_time, block_event, _ = blocked_periods[event.thread_id]
                     block_duration = event.start_time - block_start_time
-
-                    # Find which core this thread will use when it unblocks
-                    # Look for the next completed event for this thread
-                    next_core = 0
-                    for next_event in execution_events:
-                        if (
-                            next_event.thread_id == event.thread_id
-                            and next_event.status == EventStatus.COMPLETED
-                            and next_event.start_time >= event.start_time
-                        ):
-                            next_core = core_assignments.get(id(next_event), 0)
-                            break
 
                     # Build args dict
                     wait_args = {
@@ -273,14 +320,18 @@ class PerfettoTraceGenerator:
                     else:
                         wait_name = f"{event.thread_name}: wait (blocked)"
 
+                    # Use thread_id + 1000 as tid for wait tracks (separate from core tracks)
+                    # This creates separate "wait" tracks that don't overlap with core execution
+                    wait_tid = event.thread_id + 1000
+
                     # Create a duration event for the blocked period (neutral gray, subtle)
                     self.add_complete_event(
                         name=wait_name,
                         category="wait",
                         timestamp_us=block_start_time * time_scale,
                         duration_us=block_duration * time_scale,
-                        pid=pid,
-                        tid=next_core + 100,  # Add offset for tid
+                        pid=blocked_pid,
+                        tid=wait_tid,
                         args=wait_args,
                         color="generic_work",  # Neutral medium gray (125, 125, 125)
                         alpha=0.3,  # 30% opacity
@@ -316,14 +367,15 @@ class PerfettoTraceGenerator:
             else:
                 wait_name = f"{block_event.thread_name}: wait (blocked)"
 
-            # Use core 0 (tid=100) for deadlocked threads
+            # Use thread_id + 1000 for wait track (separate from cores)
+            wait_tid = thread_id + 1000
             self.add_complete_event(
                 name=wait_name,
                 category="wait",
                 timestamp_us=block_start_time * time_scale,
                 duration_us=block_duration * time_scale,
-                pid=pid,
-                tid=100,  # Core 0 with offset
+                pid=blocked_pid,
+                tid=wait_tid,
                 args=wait_args,
                 color="generic_work",
                 alpha=0.3,
@@ -343,7 +395,7 @@ class PerfettoTraceGenerator:
                 name="🏁 END OF TRACE 🏁",
                 category="marker",
                 timestamp_us=end_marker_time,
-                pid=pid,
+                pid=cores_pid,
                 tid=tid,
                 scope="t",
                 args={

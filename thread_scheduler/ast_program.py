@@ -136,8 +136,9 @@ class ASTProgram:
             # Return statements are ignored - we just generate all operations
             pass
         elif isinstance(stmt, ast.Expr):
-            # Expression statements (e.g., function calls)
-            pass
+            # Expression statements (e.g., function calls like store())
+            if isinstance(stmt.value, ast.Call):
+                self._process_expression_call(stmt.value, stmt)
         else:
             raise NotImplementedError(
                 f"Statement type not supported: {type(stmt).__name__}"
@@ -190,6 +191,66 @@ class ASTProgram:
         else:
             raise NotImplementedError(
                 f"Value type not supported: {type(value_node).__name__}"
+            )
+
+    def _process_expression_call(self, node: ast.Call, stmt: ast.AST):
+        """Process a function call as a statement (e.g., store())."""
+        # Get source location for this statement
+        location = self._get_source_location(stmt)
+
+        # Check if it's the store() function
+        if isinstance(node.func, ast.Name) and node.func.id == "store":
+            # store(source, destination) -> wait(source) + write(destination, source) + push(destination)
+            if len(node.args) != 2:
+                raise ValueError(
+                    "store() expects exactly two arguments: store(source, destination)"
+                )
+
+            source_arg = node.args[0]
+            dest_arg = node.args[1]
+
+            # Get source variable name (should be a Name node)
+            if isinstance(source_arg, ast.Name):
+                source_name = self._scoped_name(source_arg.id)
+            else:
+                raise NotImplementedError(
+                    f"store() source must be a variable name, got: {type(source_arg).__name__}"
+                )
+
+            # Get destination name (should be a string constant or f-string)
+            if isinstance(dest_arg, ast.Constant) and isinstance(dest_arg.value, str):
+                dest_name = dest_arg.value
+            elif isinstance(dest_arg, ast.Name):
+                # If it's a variable name, evaluate it from closure
+                var_name = dest_arg.id
+                if var_name in self.closure_vars:
+                    dest_name = self.closure_vars[var_name]
+                else:
+                    dest_name = var_name
+            elif isinstance(dest_arg, ast.JoinedStr):
+                # F-string - need to evaluate it using closure variables
+                # For now, use ast.unparse and eval with closure_vars
+                try:
+                    dest_name = eval(ast.unparse(dest_arg), {}, self.closure_vars)
+                except Exception as e:
+                    raise ValueError(
+                        f"Could not evaluate f-string destination: {ast.unparse(dest_arg)}"
+                    ) from e
+            else:
+                raise NotImplementedError(
+                    f"store() destination must be a string constant, variable, or f-string, got: {type(dest_arg).__name__}"
+                )
+
+            # Generate wait + write + push operations
+            self.operations.append(self.device.wait(source_name, location=location))
+            self.operations.append(
+                self.device.write(dest_name, source_name, location=location)
+            )
+            self.operations.append(self.device.push(dest_name, location=location))
+        else:
+            # Other function calls are not supported
+            raise NotImplementedError(
+                f"Function call not supported: {ast.unparse(node)}"
             )
 
     def _process_call(self, result_name: str, node: ast.Call, stmt: ast.AST):
@@ -338,6 +399,36 @@ def read(value):
     """
     raise RuntimeError(
         "read() should only be used in AST-compiled code, not called directly"
+    )
+
+
+def store(source, destination):
+    """
+    Placeholder function for AST compilation.
+
+    In AST-compiled code, `store(source, destination)` generates:
+        dev.wait("source")
+        dev.write("destination", "source")
+        dev.push("destination")
+
+    This function should never be called at runtime - it's only
+    recognized by the AST compiler.
+
+    Args:
+        source: The variable to read from (scoped variable name)
+        destination: The destination name (typically a string for external storage)
+
+    Returns:
+        None (but this is never actually executed)
+
+    Example:
+        @sim.thread(name="writer", iteration=0)
+        def writer():
+            store(result, "output_0")  # Generates: wait(iter_0.result) + write(output_0, iter_0.result) + push(output_0)
+            return None
+    """
+    raise RuntimeError(
+        "store() should only be used in AST-compiled code, not called directly"
     )
 
 

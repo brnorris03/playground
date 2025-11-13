@@ -14,7 +14,7 @@ from pathlib import Path
 # Add parent directory to path for package imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from thread_scheduler import create_simulation, generate_perfetto_trace, read
+from thread_scheduler import create_simulation, generate_perfetto_trace, read, store
 from thread_scheduler.utils import (
     print_example_header,
     print_timeline,
@@ -63,8 +63,8 @@ def device_program(iteration):
     @sim.thread(name=f"It{iteration}_writer", iteration=iteration)
     def writer():
         """Write output chunk."""
-        output = result
-        return output
+        store(result, f"output_{iteration}")
+        return None
 
 
 if __name__ == "__main__":
