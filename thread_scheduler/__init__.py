@@ -27,7 +27,7 @@ from .utils import (
 )
 from .config import OPERATION_DURATIONS
 from .types import ThreadState, EventStatus
-from .ast_program import ASTProgram, program
+from .ast_program import ASTProgram, program, read
 
 __all__ = [
     "Memory",
@@ -57,5 +57,6 @@ __all__ = [
     "EventStatus",
     "ASTProgram",
     "program",
+    "read",
     "SourceLocation",
 ]

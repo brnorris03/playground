@@ -113,12 +113,12 @@ def print_timeline(events, title="Execution Timeline", num_cores=None):
     """
     import os
 
-    width = 120
+    width = 150
     print(f"\n{'='*width}")
     print(f"{title:^{width}}")
     print(f"{'='*width}")
     print(
-        f"{'Time':<12} {'Thread':<20} {'Operation':<40} {'Status':<12} {'Source':<30}"
+        f"{'Time':<14} {'Thread':<18} {'Operation':<70} {'Status':<12} {'Source':<30}"
     )
     print(f"{'-'*width}")
 
@@ -134,7 +134,7 @@ def print_timeline(events, title="Execution Timeline", num_cores=None):
             source_info = f"{filename}:{event.operation.source_line}"
 
         print(
-            f"{time_str:<12} {event.thread_name:<20} {str(event.operation):<40} {event.status.value:<12} {source_info:<30}"
+            f"{time_str:<14} {event.thread_name:<18} {str(event.operation):<70} {event.status.value:<12} {source_info:<30}"
         )
 
     print(f"{'-'*width}")

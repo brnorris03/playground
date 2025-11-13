@@ -6,7 +6,7 @@ Requirements: Python 3.10+
 
 ## Features
 
-- Operations: wait, write, push, add, multiply, subtract
+- Operations: wait, write, push, add, multiply, subtract, read
 - Configurable number of cores with parallel execution
 - Round-robin scheduling
 - Address-based memory with availability tracking
@@ -17,6 +17,7 @@ Requirements: Python 3.10+
   - **Natural Python syntax** with AST compilation (default)
   - **Explicit Device API**: `dev.write()`, `dev.add()`, etc.
 - Decorator-based thread definition
+- Iteration-based variable scoping for pipeline parallelism
 - Deadlock detection
 
 ## Architecture
@@ -57,12 +58,14 @@ python3 -m examples.math_pipeline
 python3 -m examples.ast_complex
 python3 -m examples.ast_statistics_pipeline
 python3 -m examples.ast_statistics_fused
+python3 -m examples.ast_array_pipeline
 
 # Explicit Device API examples
 python3 -m examples.producer_consumer
 python3 -m examples.multi_consumer
 python3 -m examples.parallel_math
 python3 -m examples.statistics_pipeline
+python3 -m examples.array_pipeline
 python3 -m examples.device_api_demo
 python3 -m examples.perfect_parallelism
 python3 -m examples.deadlock_demo
@@ -132,12 +135,52 @@ print(f"result = {sim.get_memory().read('result')}")  # Output: result = 52
 ```
 
 **How it works:**
-- Variables are automatically managed in global scope
+- Variables are automatically managed in global scope by default
 - Assignments like `x = 42` generate `write(x, 42)` and `push(x)` operations
 - Expressions like `result = x + y` generate `wait(x)`, `wait(y)`, `add(x, y, result)`, and `push(result)` operations
+- The `read()` function reads external values: `a = read(value)` generates `write(a, value)` and `push(a)`
 - Source locations in traces point to your actual Python code lines
 
-**Note:** Currently all variables are in global scope. Use unique variable names across threads to avoid conflicts. Proper scoping (distinguishing local vs global variables) is a TODO.
+**Iteration Scoping:**
+
+For pipeline parallelism with multiple iterations, use the `iteration` parameter to scope variables:
+
+```python
+import random
+from thread_scheduler import create_simulation, generate_perfetto_trace, read
+
+sim = create_simulation(num_cores=3)
+random.seed(42)
+input_data = [(random.randint(1, 100), random.randint(1, 100)) for _ in range(10)]
+
+def pipeline(iteration):
+    a_val, b_val = input_data[iteration]
+    
+    @sim.thread(name=f"It{iteration}_reader", iteration=iteration)
+    def reader():
+        a = read(a_val)  # Becomes iter_0.a, iter_1.a, etc.
+        b = read(b_val)
+        return a, b
+    
+    @sim.thread(name=f"It{iteration}_compute", iteration=iteration)
+    def compute():
+        result = (a + b) * (a - b)  # Uses iter_N.a, iter_N.b
+        return result
+    
+    @sim.thread(name=f"It{iteration}_writer", iteration=iteration)
+    def writer():
+        output = result  # Uses iter_N.result
+        return output
+
+# Launch 10 iterations
+for i in range(10):
+    pipeline(i)
+
+events = sim.run()
+generate_perfetto_trace(events, "pipeline.json", num_cores=3)
+```
+
+When `iteration` is specified, all variables are automatically prefixed with `iter_{iteration}.`, allowing multiple iterations to run concurrently without conflicts.
 
 #### Explicit Device API
 
@@ -341,6 +384,9 @@ Mark data as available. Duration: 0.2s. Non-preemptible. Works for both literal 
 ### add/multiply/subtract(addr1, addr2, dest)
 Compute `dest = addr1 OP addr2`. Store result but do NOT make available. Duration: 1s. Non-preemptible. Requires `push(dest)` to make result available.
 
+### read(value)
+AST-only operation for reading external values. `a = read(value)` generates `write(a, value)` + `push(a)`. Used with closure variables in iteration-scoped pipelines. Not available in explicit Device API.
+
 ## Perfetto Trace Format
 
 Chrome Trace Event Format with:
@@ -381,13 +427,15 @@ thread_scheduler/
 │   ├── ast_complex.py               # Natural Python syntax
 │   ├── ast_statistics_pipeline.py   # Natural Python syntax (10 threads)
 │   ├── ast_statistics_fused.py      # Natural Python syntax (5 threads, fused)
+│   ├── ast_array_pipeline.py        # Natural Python syntax (iteration scoping, 30 threads)
 │   ├── producer_consumer.py         # Explicit Device API
-│   ├── multi_consumer.py        # Explicit Device API
-│   ├── parallel_math.py         # Explicit Device API
-│   ├── statistics_pipeline.py   # Explicit Device API
-│   ├── device_api_demo.py       # Explicit Device API
-│   ├── perfect_parallelism.py   # Explicit Device API
-│   └── deadlock_demo.py         # Explicit Device API
+│   ├── multi_consumer.py            # Explicit Device API
+│   ├── parallel_math.py             # Explicit Device API
+│   ├── statistics_pipeline.py       # Explicit Device API
+│   ├── array_pipeline.py            # Explicit Device API (iteration-based, 30 threads)
+│   ├── device_api_demo.py           # Explicit Device API
+│   ├── perfect_parallelism.py       # Explicit Device API
+│   └── deadlock_demo.py             # Explicit Device API
 └── traces/                  # Generated trace files
 ```
 
@@ -399,4 +447,4 @@ thread_scheduler/
 ## Improvements
 
 - Instead of generating JSON, use the Perfetto SDK
-- Implement proper scoping of variables
+- Implement proper scoping of variables (distinguish local vs. global variables within AST-compiled code)

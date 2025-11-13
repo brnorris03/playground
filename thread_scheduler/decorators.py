@@ -21,7 +21,12 @@ class SimulationBuilder:
         self._thread_counter = 0
         self.dev = Device()  # Device instance for creating operations
 
-    def thread(self, name: Optional[str] = None, use_ast: bool = True):
+    def thread(
+        self,
+        name: Optional[str] = None,
+        use_ast: bool = True,
+        iteration: Optional[int] = None,
+    ):
         """
         Decorator to mark a function as a simulated thread.
 
@@ -29,14 +34,17 @@ class SimulationBuilder:
             name: Optional thread name (defaults to function name)
             use_ast: If True (default), use AST to compile natural Python syntax.
                     If False, function should return a list of operations.
+            iteration: Optional iteration number for scoping variables.
+                      Variables will be scoped as "iter_{iteration}.{var_name}".
+                      If None, variables are global (no scoping).
 
         Examples:
-            # Natural Python syntax (use_ast=True, default):
-            @sim.thread(name="worker1")
+            # Natural Python syntax with iteration scoping:
+            @sim.thread(name="worker1", iteration=0)
             def worker1():
                 x = 10
                 y = 20
-                result = x + y
+                result = x + y  # Variables scoped as iter_0.x, iter_0.y, iter_0.result
                 return result
 
             # Explicit operations (use_ast=False):
@@ -56,9 +64,28 @@ class SimulationBuilder:
 
             # Get operations based on mode
             if use_ast:
-                # Use AST to compile natural Python syntax (global scope for now)
-                # TODO: Implement proper scoping that distinguishes local vs global variables
-                compiler = ASTProgram(self.dev, scope_prefix=None)
+                # Determine scope prefix based on iteration
+                if iteration is not None:
+                    scope_prefix = f"iter_{iteration}"
+                else:
+                    scope_prefix = None  # Global scope
+
+                # Capture closure variables from the function
+                closure_vars = {}
+                if func.__closure__:
+                    closure_names = func.__code__.co_freevars
+                    for i, cell in enumerate(func.__closure__):
+                        if i < len(closure_names):
+                            try:
+                                closure_vars[closure_names[i]] = cell.cell_contents
+                            except ValueError:
+                                # Cell is empty, skip it
+                                pass
+
+                # Use AST to compile natural Python syntax
+                compiler = ASTProgram(
+                    self.dev, scope_prefix=scope_prefix, closure_vars=closure_vars
+                )
                 operations = compiler.compile(func)
             else:
                 # Execute the function to get operations directly

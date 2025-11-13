@@ -15,6 +15,7 @@ Allows writing programs with completely natural Python syntax:
 from __future__ import annotations
 import ast
 import inspect
+import textwrap
 from typing import Any, Callable, List, Optional
 from .simulator import Operation
 from .utils import SourceLocation
@@ -34,11 +35,17 @@ class ASTProgram:
         ops = ASTProgram(dev).compile(my_computation)
     """
 
-    def __init__(self, device, scope_prefix: Optional[str] = None):
+    def __init__(
+        self,
+        device,
+        scope_prefix: Optional[str] = None,
+        closure_vars: Optional[dict] = None,
+    ):
         self.device = device
         self.operations: List[Operation] = []
         self.variables: dict[str, Any] = {}
         self.scope_prefix = scope_prefix  # Prefix for variable scoping
+        self.closure_vars = closure_vars or {}  # Closure variables from outer scope
         self.source_location: Optional[SourceLocation] = SourceLocation(None, None)
 
     def compile(self, func: Callable) -> List[Operation]:
@@ -54,10 +61,21 @@ class ASTProgram:
         # Get the source file and line number of the function
         self.source_file = inspect.getsourcefile(func)
         source_lines, start_line = inspect.getsourcelines(func)
-        self.source_line_offset = start_line - 1  # Convert to 0-based
 
-        # Get the source code and parse it
-        source = inspect.getsource(func)
+        # Remove decorators from source lines - they start with @
+        clean_lines = []
+        for line in source_lines:
+            stripped = line.lstrip()
+            if not stripped.startswith("@"):
+                clean_lines.append(line)
+
+        # Adjust start_line to account for removed decorators
+        num_decorators = len(source_lines) - len(clean_lines)
+        self.source_line_offset = start_line + num_decorators - 1  # Convert to 0-based
+
+        # Dedent and parse the cleaned source
+        source = "".join(clean_lines)
+        source = textwrap.dedent(source)
         tree = ast.parse(source)
 
         # Find the function definition
@@ -165,9 +183,62 @@ class ASTProgram:
             # Note: We don't create a new variable, just wait for the source
             self.variables[var_name] = source_name
 
+        elif isinstance(value_node, ast.Call):
+            # x = read(value) or x = func()
+            self._process_call(scoped_var_name, value_node, stmt)
+
         else:
             raise NotImplementedError(
                 f"Value type not supported: {type(value_node).__name__}"
+            )
+
+    def _process_call(self, result_name: str, node: ast.Call, stmt: ast.AST):
+        """Process a function call: x = read(value) or x = func()."""
+        # Get source location for this statement
+        location = self._get_source_location(stmt)
+
+        # Check if it's the read() function
+        if isinstance(node.func, ast.Name) and node.func.id == "read":
+            # x = read(value) -> write(x, value) + push(x)
+            if len(node.args) != 1:
+                raise ValueError("read() expects exactly one argument")
+
+            # Get the value to read (could be a constant, variable, or subscript)
+            arg = node.args[0]
+
+            # Evaluate the argument to get the actual value
+            # For now, we support: read(constant), read(variable), read(var[slice])
+            if isinstance(arg, ast.Constant):
+                # read(10) -> write(x, 10) + push(x)
+                value = arg.value
+            elif isinstance(arg, ast.Name):
+                # read(some_var) -> write(x, some_var) + push(x)
+                # The value is a reference to a Python variable (closure)
+                var_name = arg.id
+                if var_name in self.closure_vars:
+                    # Use the actual value from closure
+                    value = self.closure_vars[var_name]
+                else:
+                    # Fall back to the variable name (might be a scoped variable)
+                    value = var_name
+            elif isinstance(arg, ast.Subscript):
+                # read(data[0:1024]) -> write(x, "data[0:1024]") + push(x)
+                # For now, just use a string representation
+                value = ast.unparse(arg)
+            else:
+                raise NotImplementedError(
+                    f"read() argument type not supported: {type(arg).__name__}"
+                )
+
+            # Generate write + push operations
+            self.operations.append(
+                self.device.write(result_name, value, location=location)
+            )
+            self.operations.append(self.device.push(result_name, location=location))
+            self.variables[result_name] = value
+        else:
+            raise NotImplementedError(
+                f"Function call not supported: {ast.unparse(node)}"
             )
 
     def _process_binary_op(self, result_name: str, node: ast.BinOp, stmt: ast.AST):
@@ -239,6 +310,35 @@ class ASTProgram:
             raise NotImplementedError(
                 f"Operand type not supported: {type(node).__name__}"
             )
+
+
+def read(value):
+    """
+    Placeholder function for AST compilation.
+
+    In AST-compiled code, `x = read(value)` generates:
+        dev.write("x", value)
+        dev.push("x")
+
+    This function should never be called at runtime - it's only
+    recognized by the AST compiler.
+
+    Args:
+        value: The value to read (can be a constant, variable, or slice)
+
+    Returns:
+        The value (but this is never actually executed)
+
+    Example:
+        @sim.thread(name="reader", iteration=0)
+        def reader():
+            a = read(82)  # Generates: write(iter_0.a, 82) + push(iter_0.a)
+            b = read(15)
+            return a, b
+    """
+    raise RuntimeError(
+        "read() should only be used in AST-compiled code, not called directly"
+    )
 
 
 def program(device):
