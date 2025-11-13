@@ -56,6 +56,7 @@ Run individual examples as Python modules:
 python3 -m examples.math_pipeline
 python3 -m examples.ast_complex
 python3 -m examples.ast_statistics_pipeline
+python3 -m examples.ast_statistics_fused
 
 # Explicit Device API examples
 python3 -m examples.producer_consumer
@@ -378,7 +379,8 @@ thread_scheduler/
 ├── examples/                # Example simulations
 │   ├── math_pipeline.py             # Natural Python syntax
 │   ├── ast_complex.py               # Natural Python syntax
-│   ├── ast_statistics_pipeline.py   # Natural Python syntax
+│   ├── ast_statistics_pipeline.py   # Natural Python syntax (10 threads)
+│   ├── ast_statistics_fused.py      # Natural Python syntax (5 threads, fused)
 │   ├── producer_consumer.py         # Explicit Device API
 │   ├── multi_consumer.py        # Explicit Device API
 │   ├── parallel_math.py         # Explicit Device API
