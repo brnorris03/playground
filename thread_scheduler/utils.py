@@ -3,9 +3,25 @@
 Utility functions for the thread scheduler simulator.
 """
 
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, NamedTuple
 import inspect
 from .types import EventStatus
+
+
+class SourceLocation(NamedTuple):
+    """Source code location (file and line number)."""
+
+    file: Optional[str]
+    line: Optional[int]
+
+    def __str__(self) -> str:
+        """Format as filename:line."""
+        if self.file and self.line:
+            import os
+
+            filename = os.path.basename(self.file)
+            return f"{filename}:{self.line}"
+        return ""
 
 
 def format_source_location(
@@ -29,7 +45,7 @@ def format_source_location(
     return ""
 
 
-def get_caller_location() -> Tuple[Optional[str], Optional[int]]:
+def get_caller_location() -> SourceLocation:
     """
     Get the source file and line number of the user code that called a Device method.
 
@@ -37,11 +53,11 @@ def get_caller_location() -> Tuple[Optional[str], Optional[int]]:
     which represents the actual user code creating operations.
 
     Returns:
-        Tuple of (source_file, source_line) or (None, None) if unavailable
+        SourceLocation with file and line, or SourceLocation(None, None) if unavailable
     """
     frame = inspect.currentframe()
     if not frame:
-        return None, None
+        return SourceLocation(None, None)
 
     import os
 
@@ -58,7 +74,9 @@ def get_caller_location() -> Tuple[Optional[str], Optional[int]]:
             ):
                 # Found a public Device method - return its caller's location
                 if current.f_back:
-                    return current.f_back.f_code.co_filename, current.f_back.f_lineno
+                    return SourceLocation(
+                        current.f_back.f_code.co_filename, current.f_back.f_lineno
+                    )
 
         current = current.f_back
 
@@ -68,10 +86,10 @@ def get_caller_location() -> Tuple[Optional[str], Optional[int]]:
     while current:
         filename = current.f_code.co_filename
         if not filename.startswith(package_dir) and not filename.startswith("<"):
-            return filename, current.f_lineno
+            return SourceLocation(filename, current.f_lineno)
         current = current.f_back
 
-    return None, None
+    return SourceLocation(None, None)
 
 
 def print_example_header(title, description, scheduler_info):

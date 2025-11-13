@@ -7,6 +7,7 @@ Simplifies thread creation by using Python decorators.
 from typing import Callable, List, Optional
 from .simulator import Thread, Scheduler, Memory
 from .device import Device
+from .ast_program import ASTProgram
 
 
 class SimulationBuilder:
@@ -20,15 +21,27 @@ class SimulationBuilder:
         self._thread_counter = 0
         self.dev = Device()  # Device instance for creating operations
 
-    def thread(self, name: Optional[str] = None):
+    def thread(self, name: Optional[str] = None, use_ast: bool = True):
         """
         Decorator to mark a function as a simulated thread.
 
-        The decorated function should return a list of operations.
+        Args:
+            name: Optional thread name (defaults to function name)
+            use_ast: If True (default), use AST to compile natural Python syntax.
+                    If False, function should return a list of operations.
 
-        Example:
+        Examples:
+            # Natural Python syntax (use_ast=True, default):
             @sim.thread(name="worker1")
             def worker1():
+                x = 10
+                y = 20
+                result = x + y
+                return result
+
+            # Explicit operations (use_ast=False):
+            @sim.thread(name="worker2", use_ast=False)
+            def worker2():
                 return [
                     sim.dev.wait("x"),
                     sim.dev.add("x", "y", "result"),
@@ -41,8 +54,15 @@ class SimulationBuilder:
             thread_id = self._thread_counter
             self._thread_counter += 1
 
-            # Execute the function to get operations
-            operations = func()
+            # Get operations based on mode
+            if use_ast:
+                # Use AST to compile natural Python syntax (global scope for now)
+                # TODO: Implement proper scoping that distinguishes local vs global variables
+                compiler = ASTProgram(self.dev, scope_prefix=None)
+                operations = compiler.compile(func)
+            else:
+                # Execute the function to get operations directly
+                operations = func()
 
             # Create and register the thread
             thread = Thread(

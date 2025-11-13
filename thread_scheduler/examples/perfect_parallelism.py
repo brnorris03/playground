@@ -24,7 +24,7 @@ sim = create_simulation(num_cores=4)
 dev = sim.dev  # Get device instance
 
 
-@sim.thread(name="worker1")
+@sim.thread(name="worker1", use_ast=False)
 def worker1():
     """Compute result1 independently."""
     return [
@@ -37,7 +37,7 @@ def worker1():
     ]
 
 
-@sim.thread(name="worker2")
+@sim.thread(name="worker2", use_ast=False)
 def worker2():
     """Compute result2 independently."""
     return [
@@ -50,7 +50,7 @@ def worker2():
     ]
 
 
-@sim.thread(name="worker3")
+@sim.thread(name="worker3", use_ast=False)
 def worker3():
     """Compute result3 independently."""
     return [
@@ -63,7 +63,7 @@ def worker3():
     ]
 
 
-@sim.thread(name="worker4")
+@sim.thread(name="worker4", use_ast=False)
 def worker4():
     """Compute result4 independently."""
     return [

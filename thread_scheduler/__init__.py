@@ -23,9 +23,11 @@ from .utils import (
     print_memory_state,
     get_caller_location,
     format_source_location,
+    SourceLocation,
 )
 from .config import OPERATION_DURATIONS
 from .types import ThreadState, EventStatus
+from .ast_program import ASTProgram, program
 
 __all__ = [
     "Memory",
@@ -53,4 +55,7 @@ __all__ = [
     "OPERATION_DURATIONS",
     "ThreadState",
     "EventStatus",
+    "ASTProgram",
+    "program",
+    "SourceLocation",
 ]

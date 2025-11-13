@@ -25,7 +25,7 @@ sim = create_simulation(num_cores=4)
 dev = sim.dev  # Get device instance
 
 
-@sim.thread(name="host_init")
+@sim.thread(name="host_init", use_ast=False)
 def host():
     return [
         dev.write("a", 10),
@@ -39,7 +39,7 @@ def host():
     ]
 
 
-@sim.thread(name="worker1_sum_ab")
+@sim.thread(name="worker1_sum_ab", use_ast=False)
 def worker1():
     return [
         dev.wait("a"),
@@ -49,7 +49,7 @@ def worker1():
     ]
 
 
-@sim.thread(name="worker2_sum_cd")
+@sim.thread(name="worker2_sum_cd", use_ast=False)
 def worker2():
     return [
         dev.wait("c"),
@@ -59,7 +59,7 @@ def worker2():
     ]
 
 
-@sim.thread(name="worker3_prod_ab")
+@sim.thread(name="worker3_prod_ab", use_ast=False)
 def worker3():
     return [
         dev.wait("a"),
@@ -69,7 +69,7 @@ def worker3():
     ]
 
 
-@sim.thread(name="worker4_prod_cd")
+@sim.thread(name="worker4_prod_cd", use_ast=False)
 def worker4():
     return [
         dev.wait("c"),
@@ -79,7 +79,7 @@ def worker4():
     ]
 
 
-@sim.thread(name="worker5_diff_sums")
+@sim.thread(name="worker5_diff_sums", use_ast=False)
 def worker5():
     return [
         dev.wait("sum_ab"),
@@ -89,7 +89,7 @@ def worker5():
     ]
 
 
-@sim.thread(name="worker6_diff_prods")
+@sim.thread(name="worker6_diff_prods", use_ast=False)
 def worker6():
     return [
         dev.wait("prod_ab"),
@@ -99,7 +99,7 @@ def worker6():
     ]
 
 
-@sim.thread(name="worker7_mean")
+@sim.thread(name="worker7_mean", use_ast=False)
 def worker7():
     return [
         dev.wait("sum_ab"),
@@ -109,7 +109,7 @@ def worker7():
     ]
 
 
-@sim.thread(name="worker8_variance")
+@sim.thread(name="worker8_variance", use_ast=False)
 def worker8():
     return [
         dev.wait("diff_sums"),
@@ -119,7 +119,7 @@ def worker8():
     ]
 
 
-@sim.thread(name="worker9_final")
+@sim.thread(name="worker9_final", use_ast=False)
 def worker9():
     return [
         dev.wait("total_sum"),

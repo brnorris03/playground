@@ -24,7 +24,7 @@ sim = create_simulation(num_cores=2)
 dev = sim.dev  # Get device instance
 
 
-@sim.thread(name="producer")
+@sim.thread(name="producer", use_ast=False)
 def producer():
     """Produce data."""
     return [
@@ -33,7 +33,7 @@ def producer():
     ]
 
 
-@sim.thread(name="consumer")
+@sim.thread(name="consumer", use_ast=False)
 def consumer():
     """Wait for and consume data."""
     return [

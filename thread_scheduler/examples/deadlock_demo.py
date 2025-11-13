@@ -24,7 +24,7 @@ sim = create_simulation(num_cores=2)
 dev = sim.dev  # Get device instance
 
 
-@sim.thread(name="worker1")
+@sim.thread(name="worker1", use_ast=False)
 def worker1():
     """Wait for data that worker2 will provide (but worker2 is also waiting)."""
     return [
@@ -34,7 +34,7 @@ def worker1():
     ]
 
 
-@sim.thread(name="worker2")
+@sim.thread(name="worker2", use_ast=False)
 def worker2():
     """Wait for data that worker1 will provide (but worker1 is also waiting)."""
     return [

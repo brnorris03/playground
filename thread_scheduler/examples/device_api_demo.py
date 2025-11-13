@@ -24,7 +24,7 @@ sim = create_simulation(num_cores=4)
 dev = sim.dev  # Get the device instance
 
 
-@sim.thread(name="host")
+@sim.thread(name="host", use_ast=False)
 def host():
     """Initialize input data using Device API."""
     return [
@@ -35,7 +35,7 @@ def host():
     ]
 
 
-@sim.thread(name="worker1")
+@sim.thread(name="worker1", use_ast=False)
 def worker1():
     """Compute difference using Device API."""
     return [
@@ -46,7 +46,7 @@ def worker1():
     ]
 
 
-@sim.thread(name="worker2")
+@sim.thread(name="worker2", use_ast=False)
 def worker2():
     """Compute sum using Device API."""
     return [
@@ -57,7 +57,7 @@ def worker2():
     ]
 
 
-@sim.thread(name="worker3")
+@sim.thread(name="worker3", use_ast=False)
 def worker3():
     """Multiply results using Device API."""
     return [

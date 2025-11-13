@@ -11,9 +11,11 @@ Requirements: Python 3.10+
 - Round-robin scheduling
 - Address-based memory with availability tracking
 - Logical timestamps (default: 1s per operation)
-- Perfetto trace generation
+- Perfetto trace generation with source location tracking
 - Console output with efficiency statistics
-- Device API: `dev.write()`, `dev.add()`, etc.
+- Two programming styles:
+  - **Natural Python syntax** with AST compilation (default)
+  - **Explicit Device API**: `dev.write()`, `dev.add()`, etc.
 - Decorator-based thread definition
 - Deadlock detection
 
@@ -49,9 +51,15 @@ Run individual examples as Python modules:
 
 ```bash
 # From the thread_scheduler directory
+
+# Natural Python syntax examples (use AST transformation)
+python3 -m examples.math_pipeline
+python3 -m examples.ast_complex
+python3 -m examples.ast_statistics_pipeline
+
+# Explicit Device API examples
 python3 -m examples.producer_consumer
 python3 -m examples.multi_consumer
-python3 -m examples.math_pipeline
 python3 -m examples.parallel_math
 python3 -m examples.statistics_pipeline
 python3 -m examples.device_api_demo
@@ -69,7 +77,12 @@ Each example will:
 
 1. Open [https://ui.perfetto.dev](https://ui.perfetto.dev) or use the VSCode plugin
 2. Load trace file from `traces/` subdirectory
-3. Timeline shows threads executing "in parallel" using logical timestamps. Click on boxes to see metadata (location, variables, operation, etc.)
+3. Timeline shows threads executing "in parallel" using logical timestamps
+4. Click on operation boxes to see metadata:
+   - **Source location**: Exact line in your Python code (e.g., `math_pipeline.py:30`)
+   - **Operation details**: Type, addresses, values
+   - **Duration**: Logical time taken
+5. Gray semi-transparent blocks indicate wait periods (blocked threads)
 
 ### Configuration
 
@@ -87,16 +100,57 @@ OPERATION_DURATIONS["add"] = 2.0  # Make addition slower
 
 ### Creating Custom Simulations
 
+#### Natural Python Syntax (Default)
+
+Use natural Python syntax with automatic AST compilation:
+
 ```python
 from thread_scheduler import create_simulation, generate_perfetto_trace
-from thread_scheduler.utils import print_timeline, print_memory_state
+
+# Create simulation
+sim = create_simulation(num_cores=2)
+
+# Define threads using natural Python syntax
+@sim.thread(name="host")
+def host():
+    x = 42
+    y = 10
+    return x, y
+
+@sim.thread(name="worker")
+def worker():
+    result = x + y
+    return result
+
+# Run simulation
+events = sim.run()
+
+# Display results
+generate_perfetto_trace(events, "my_trace.json")
+print(f"result = {sim.get_memory().read('result')}")  # Output: result = 52
+```
+
+**How it works:**
+- Variables are automatically managed in global scope
+- Assignments like `x = 42` generate `write(x, 42)` and `push(x)` operations
+- Expressions like `result = x + y` generate `wait(x)`, `wait(y)`, `add(x, y, result)`, and `push(result)` operations
+- Source locations in traces point to your actual Python code lines
+
+**Note:** Currently all variables are in global scope. Use unique variable names across threads to avoid conflicts. Proper scoping (distinguishing local vs global variables) is a TODO.
+
+#### Explicit Device API
+
+For more control over operations, use explicit device API with `use_ast=False`:
+
+```python
+from thread_scheduler import create_simulation, generate_perfetto_trace
 
 # Create simulation
 sim = create_simulation(num_cores=2)
 dev = sim.dev  # Get device instance
 
-# Define threads using decorators
-@sim.thread(name="host")
+# Define threads using explicit operations
+@sim.thread(name="host", use_ast=False)
 def host():
     return [
         dev.write("x", 42),
@@ -105,7 +159,7 @@ def host():
         dev.push("y"),
     ]
 
-@sim.thread(name="worker")
+@sim.thread(name="worker", use_ast=False)
 def worker():
     return [
         dev.wait("x"),
@@ -116,11 +170,7 @@ def worker():
 
 # Run simulation
 events = sim.run()
-
-# Display results
-print_timeline(events, "My Simulation", num_cores=sim.get_num_cores())
 generate_perfetto_trace(events, "my_trace.json")
-print_memory_state(sim.get_memory())
 ```
 
 #### Available Device Methods
@@ -317,18 +367,25 @@ Detects when all threads are completed or blocked waiting for unavailable data.
 ```
 thread_scheduler/
 ├── __init__.py              # Package initialization
-├── simulator.py             # Core simulator (Memory, Thread, Scheduler)
+├── simulator.py             # Core simulator (Memory, Thread, Scheduler, Operations)
 ├── device.py                # Device API (clean operation interface)
-├── decorators.py            # Decorator-based thread creation
+├── decorators.py            # Decorator-based thread creation with AST support
+├── ast_program.py           # AST compiler for natural Python syntax
 ├── perfetto_trace.py        # Perfetto trace generation
-├── utils.py                 # Utility functions (print helpers)
+├── utils.py                 # Utility functions (print helpers, SourceLocation)
+├── types.py                 # Type definitions (ThreadState, EventStatus)
+├── config.py                # Configuration (operation durations)
 ├── examples/                # Example simulations
-│   ├── producer_consumer.py
-│   ├── multi_consumer.py
-│   ├── math_pipeline.py
-│   ├── parallel_math.py
-│   ├── statistics_pipeline.py
-│   └── device_api_demo.py
+│   ├── math_pipeline.py             # Natural Python syntax
+│   ├── ast_complex.py               # Natural Python syntax
+│   ├── ast_statistics_pipeline.py   # Natural Python syntax
+│   ├── producer_consumer.py         # Explicit Device API
+│   ├── multi_consumer.py        # Explicit Device API
+│   ├── parallel_math.py         # Explicit Device API
+│   ├── statistics_pipeline.py   # Explicit Device API
+│   ├── device_api_demo.py       # Explicit Device API
+│   ├── perfect_parallelism.py   # Explicit Device API
+│   └── deadlock_demo.py         # Explicit Device API
 └── traces/                  # Generated trace files
 ```
 
@@ -340,3 +397,4 @@ thread_scheduler/
 ## Improvements
 
 - Instead of generating JSON, use the Perfetto SDK
+- Implement proper scoping of variables

@@ -2,7 +2,7 @@
 """
 Math Pipeline Example
 
-Pipeline of math operations with dependencies.
+Pipeline of math operations with dependencies using natural Python syntax.
 Tests compute-then-push pattern and sequential dependencies.
 """
 
@@ -19,8 +19,6 @@ from thread_scheduler.utils import (
     print_memory_state,
 )
 
-import sys
-
 
 sim = create_simulation(num_cores=3)
 dev = sim.dev  # Get device instance
@@ -28,36 +26,25 @@ dev = sim.dev  # Get device instance
 
 @sim.thread(name="initializer")
 def initializer():
-    """Initialize input values."""
-    return [
-        dev.write("a", 5),
-        dev.push("a"),
-        dev.write("b", 3),
-        dev.push("b"),
-    ]
+    """Initialize input values with natural Python syntax."""
+    a = 5
+    b = 3
+    return a, b
 
 
 @sim.thread(name="adder")
 def adder():
-    """Compute sum."""
-    return [
-        dev.wait("a"),
-        dev.wait("b"),
-        dev.add("a", "b", "sum"),
-        dev.push("sum"),
-    ]
+    """Compute sum using natural Python syntax."""
+    sum = a + b
+    return sum
 
 
 @sim.thread(name="multiplier")
 def multiplier():
-    """Compute product."""
-    return [
-        dev.wait("sum"),
-        dev.write("c", 2),
-        dev.push("c"),
-        dev.multiply("sum", "c", "product"),
-        dev.push("product"),
-    ]
+    """Compute product using natural Python syntax."""
+    c = 2
+    product = sum * c
+    return product
 
 
 if __name__ == "__main__":

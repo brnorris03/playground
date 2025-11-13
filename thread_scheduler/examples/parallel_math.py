@@ -26,7 +26,7 @@ sim = create_simulation(num_cores=4)
 dev = sim.dev  # Get device instance
 
 
-@sim.thread(name="host")
+@sim.thread(name="host", use_ast=False)
 def host():
     """Initialize input data."""
     return [
@@ -37,7 +37,7 @@ def host():
     ]
 
 
-@sim.thread(name="worker1_subtract")
+@sim.thread(name="worker1_subtract", use_ast=False)
 def worker1():
     """Compute difference."""
     return [
@@ -48,7 +48,7 @@ def worker1():
     ]
 
 
-@sim.thread(name="worker2_add")
+@sim.thread(name="worker2_add", use_ast=False)
 def worker2():
     """Compute sum."""
     return [
@@ -59,7 +59,7 @@ def worker2():
     ]
 
 
-@sim.thread(name="worker3_multiply")
+@sim.thread(name="worker3_multiply", use_ast=False)
 def worker3():
     """Multiply results."""
     return [

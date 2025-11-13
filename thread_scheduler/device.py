@@ -12,9 +12,9 @@ from .simulator import (
     SubtractOp,
     MultiplyOp,
 )
-from .utils import get_caller_location
+from .utils import get_caller_location, SourceLocation
 from .config import OPERATION_DURATIONS
-from typing import Any
+from typing import Any, Optional
 
 
 class Device:
@@ -42,29 +42,41 @@ class Device:
         self.default_duration = default_duration
 
     def _create_op(
-        self, op_class: type, *args, duration: float = None, **kwargs
+        self,
+        op_class: type,
+        *args,
+        duration: float = None,
+        location: Optional[SourceLocation] = None,
+        **kwargs
     ) -> Operation:
         """Helper method to create operations with source location tracking."""
-        # Capture caller's source location (automatically finds first frame outside package)
-        source_file, source_line = get_caller_location()
+        # If source location not provided, capture caller's location
+        if location is None:
+            location = get_caller_location()
 
         return op_class(
             *args,
             duration=duration or self.default_duration,
-            source_file=source_file,
-            source_line=source_line,
+            source_file=location.file,
+            source_line=location.line,
             **kwargs,
         )
 
     # Synchronization operations
 
-    def wait(self, address: str, duration: float = None) -> Operation:
+    def wait(
+        self,
+        address: str,
+        duration: float = None,
+        location: Optional[SourceLocation] = None,
+    ) -> Operation:
         """
         Wait for data to be available at address.
 
         Args:
             address: Memory address to wait for
             duration: Optional custom duration (defaults to config value)
+            location: Optional source location for tracking
 
         Returns:
             Wait operation
@@ -73,15 +85,23 @@ class Device:
             WaitOp,
             address,
             duration=duration if duration is not None else OPERATION_DURATIONS["wait"],
+            location=location,
         )
 
-    def push(self, address: str, duration: float = None) -> Operation:
+    def push(
+        self,
+        address: str,
+        duration: float = None,
+        location: Optional[SourceLocation] = None,
+    ) -> Operation:
         """
         Make computed data available at address.
 
         Args:
             address: Memory address to push
             duration: Optional custom duration (defaults to config value)
+            location: Optional source location for tracking
+
 
         Returns:
             Push operation
@@ -90,11 +110,18 @@ class Device:
             PushOp,
             address,
             duration=duration if duration is not None else OPERATION_DURATIONS["push"],
+            location=location,
         )
 
     # Memory operations
 
-    def write(self, address: str, value: Any, duration: float = None) -> Operation:
+    def write(
+        self,
+        address: str,
+        value: Any,
+        duration: float = None,
+        location: Optional[SourceLocation] = None,
+    ) -> Operation:
         """
         Write value to address (does NOT mark as available - use push() for that).
 
@@ -102,6 +129,8 @@ class Device:
             address: Memory address to write to
             value: Value to write
             duration: Optional custom duration (defaults to config value)
+            location: Optional source location for tracking
+
 
         Returns:
             Write operation
@@ -111,12 +140,18 @@ class Device:
             address,
             value,
             duration=duration if duration is not None else OPERATION_DURATIONS["write"],
+            location=location,
         )
 
     # Math operations
 
     def add(
-        self, addr1: str, addr2: str, dest: str, duration: float = None
+        self,
+        addr1: str,
+        addr2: str,
+        dest: str,
+        duration: float = None,
+        location: Optional[SourceLocation] = None,
     ) -> Operation:
         """
         Add values from two addresses and store in destination.
@@ -126,6 +161,8 @@ class Device:
             addr2: Second source address
             dest: Destination address
             duration: Optional custom duration (defaults to config value)
+            location: Optional source location for tracking
+
 
         Returns:
             Add operation
@@ -136,10 +173,16 @@ class Device:
             addr2,
             dest,
             duration=duration if duration is not None else OPERATION_DURATIONS["add"],
+            location=location,
         )
 
     def subtract(
-        self, addr1: str, addr2: str, dest: str, duration: float = None
+        self,
+        addr1: str,
+        addr2: str,
+        dest: str,
+        duration: float = None,
+        location: Optional[SourceLocation] = None,
     ) -> Operation:
         """
         Subtract addr2 from addr1 and store in destination.
@@ -149,6 +192,8 @@ class Device:
             addr2: Second source address (subtrahend)
             dest: Destination address
             duration: Optional custom duration (defaults to device default)
+            location: Optional source location for tracking
+
 
         Returns:
             Subtract operation
@@ -161,10 +206,16 @@ class Device:
             duration=(
                 duration if duration is not None else OPERATION_DURATIONS["subtract"]
             ),
+            location=location,
         )
 
     def multiply(
-        self, addr1: str, addr2: str, dest: str, duration: float = None
+        self,
+        addr1: str,
+        addr2: str,
+        dest: str,
+        duration: float = None,
+        location: Optional[SourceLocation] = None,
     ) -> Operation:
         """
         Multiply values from two addresses and store in destination.
@@ -174,6 +225,8 @@ class Device:
             addr2: Second source address
             dest: Destination address
             duration: Optional custom duration (defaults to config value)
+            location: Optional source location for tracking
+
 
         Returns:
             Multiply operation
@@ -186,4 +239,5 @@ class Device:
             duration=(
                 duration if duration is not None else OPERATION_DURATIONS["multiply"]
             ),
+            location=location,
         )
