@@ -62,8 +62,8 @@ Each kernel has `#ifndef` guards providing defaults; the Python test overrides t
 ### DST Register Usage
 
 With 8 DST registers available and 2 needed per tile (for the chain of binary and unary ops), we process 4 tiles per DST acquire/release cycle:
-- Tiles use even DST registers (0, 2, 4, 6) for primary operand
-- Odd registers (1, 3, 5, 7) hold the secondary operand for binary ops
+- Registers 0-3 hold the primary operand (A tiles, then intermediate results)
+- Registers 4-7 hold the secondary operand for binary ops (B tiles, then C tiles)
 
 ### Compute Kernel
 
@@ -75,33 +75,33 @@ for each block (64 tiles):
     for each DST cycle (4 tiles):
         tile_regs_acquire()
 
-        # Copy A tiles to even DST registers
+        # Copy A tiles to DST registers 0-3
         copy_tile_init(cb_in0)
-        for i in 0..3: copy_tile(cb_in0, base+i, i*2)
+        for i in 0..3: copy_tile(cb_in0, base+i, i)
 
-        # Copy B tiles to odd DST registers
+        # Copy B tiles to DST registers 4-7
         copy_tile_init(cb_in1)
-        for i in 0..3: copy_tile(cb_in1, base+i, i*2+1)
+        for i in 0..3: copy_tile(cb_in1, base+i, i+4)
 
-        # A + B → even registers
+        # A + B → registers 0-3
         add_binary_tile_init()
-        for i in 0..3: add_binary_tile(i*2, i*2+1, i*2)
+        for i in 0..3: add_binary_tile(i, i+4, i)
 
-        # exp(A+B) in-place
+        # exp(A+B) in-place on registers 0-3
         exp_tile_init()
-        for i in 0..3: exp_tile(i*2)
+        for i in 0..3: exp_tile(i)
 
-        # Copy C to odd registers
+        # Copy C to DST registers 4-7
         copy_tile_init(cb_in2)
-        for i in 0..3: copy_tile(cb_in2, base+i, i*2+1)
+        for i in 0..3: copy_tile(cb_in2, base+i, i+4)
 
-        # exp(A+B) + C → even registers
+        # exp(A+B) + C → registers 0-3
         add_binary_tile_init()
-        for i in 0..3: add_binary_tile(i*2, i*2+1, i*2)
+        for i in 0..3: add_binary_tile(i, i+4, i)
 
         tile_regs_commit()
         tile_regs_wait()
-        pack 4 tiles from even registers
+        pack 4 tiles from registers 0-3
         tile_regs_release()
 
     pop block from input CBs

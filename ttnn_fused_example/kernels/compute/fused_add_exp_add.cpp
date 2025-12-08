@@ -60,51 +60,50 @@ void MAIN {
             // Acquire DST registers for this batch
             tile_regs_acquire();
 
-            // Copy A tiles to even DST registers
+            // Copy A tiles to DST registers 0-3
             copy_tile_init(cb_in0);
             for (uint32_t i = 0; i < tiles_per_dst_cycle; i++) {
-                copy_tile(cb_in0, base_t + i, i * 2);  // A[i] -> DST[i*2]
+                copy_tile(cb_in0, base_t + i, i);  // A[i] -> DST[i]
             }
 
-            // Copy B tiles to odd DST registers
+            // Copy B tiles to DST registers 4-7
             copy_tile_init(cb_in1);
             for (uint32_t i = 0; i < tiles_per_dst_cycle; i++) {
-                copy_tile(cb_in1, base_t + i, i * 2 + 1);  // B[i] -> DST[i*2+1]
+                copy_tile(cb_in1, base_t + i, i + tiles_per_dst_cycle);  // B[i] -> DST[i+4]
             }
-
 
             // First add: A + B for all tiles
             add_binary_tile_init();
             for (uint32_t i = 0; i < tiles_per_dst_cycle; i++) {
-                add_binary_tile(i * 2, i * 2 + 1, i * 2);  // DST[i*2] + DST[i*2+1] -> DST[i*2]
+                add_binary_tile(i, i + tiles_per_dst_cycle, i);  // DST[i] + DST[i+4] -> DST[i]
             }
 
-            // Exp: exp(A + B) for all tiles
+            // Exp: exp(A + B) for all tiles (in-place on registers 0-3)
             exp_tile_init();
             for (uint32_t i = 0; i < tiles_per_dst_cycle; i++) {
-                exp_tile(i * 2);
+                exp_tile(i);
             }
 
-            // Copy C tiles to odd DST registers
+            // Copy C tiles to DST registers 4-7
             copy_tile_init(cb_in2);
             for (uint32_t i = 0; i < tiles_per_dst_cycle; i++) {
-                copy_tile(cb_in2, base_t + i, i * 2 + 1);  // C[i] -> DST[i*2+1]
+                copy_tile(cb_in2, base_t + i, i + tiles_per_dst_cycle);  // C[i] -> DST[i+4]
             }
 
             // Second add: exp(A + B) + C for all tiles
             add_binary_tile_init();
             for (uint32_t i = 0; i < tiles_per_dst_cycle; i++) {
-                add_binary_tile(i * 2, i * 2 + 1, i * 2);  // DST[i*2] + DST[i*2+1] -> DST[i*2]
+                add_binary_tile(i, i + tiles_per_dst_cycle, i);  // DST[i] + DST[i+4] -> DST[i]
             }
 
             // Commit and wait for results
             tile_regs_commit();
             tile_regs_wait();
 
-            // Pack all output tiles from this DST cycle
+            // Pack all output tiles from DST registers 0-3
             cb_reserve_back(cb_out, tiles_per_dst_cycle);
             for (uint32_t i = 0; i < tiles_per_dst_cycle; i++) {
-                pack_tile(i * 2, cb_out);
+                pack_tile(i, cb_out);
             }
             tile_regs_release();
 
@@ -134,31 +133,31 @@ void MAIN {
 
             copy_tile_init(cb_in0);
             for (uint32_t i = 0; i < tiles_per_dst_cycle; i++) {
-                copy_tile(cb_in0, base_t + i, i * 2);
+                copy_tile(cb_in0, base_t + i, i);
             }
             copy_tile_init(cb_in1);
             for (uint32_t i = 0; i < tiles_per_dst_cycle; i++) {
-                copy_tile(cb_in1, base_t + i, i * 2 + 1);
+                copy_tile(cb_in1, base_t + i, i + tiles_per_dst_cycle);
             }
 
             add_binary_tile_init();
             for (uint32_t i = 0; i < tiles_per_dst_cycle; i++) {
-                add_binary_tile(i * 2, i * 2 + 1, i * 2);
+                add_binary_tile(i, i + tiles_per_dst_cycle, i);
             }
 
             exp_tile_init();
             for (uint32_t i = 0; i < tiles_per_dst_cycle; i++) {
-                exp_tile(i * 2);
+                exp_tile(i);
             }
 
             copy_tile_init(cb_in2);
             for (uint32_t i = 0; i < tiles_per_dst_cycle; i++) {
-                copy_tile(cb_in2, base_t + i, i * 2 + 1);
+                copy_tile(cb_in2, base_t + i, i + tiles_per_dst_cycle);
             }
 
             add_binary_tile_init();
             for (uint32_t i = 0; i < tiles_per_dst_cycle; i++) {
-                add_binary_tile(i * 2, i * 2 + 1, i * 2);
+                add_binary_tile(i, i + tiles_per_dst_cycle, i);
             }
 
             tile_regs_commit();
@@ -166,7 +165,7 @@ void MAIN {
 
             cb_reserve_back(cb_out, tiles_per_dst_cycle);
             for (uint32_t i = 0; i < tiles_per_dst_cycle; i++) {
-                pack_tile(i * 2, cb_out);
+                pack_tile(i, cb_out);
             }
             tile_regs_release();
 
@@ -181,31 +180,31 @@ void MAIN {
 
             copy_tile_init(cb_in0);
             for (uint32_t i = 0; i < final_remainder; i++) {
-                copy_tile(cb_in0, base_t + i, i * 2);
+                copy_tile(cb_in0, base_t + i, i);
             }
             copy_tile_init(cb_in1);
             for (uint32_t i = 0; i < final_remainder; i++) {
-                copy_tile(cb_in1, base_t + i, i * 2 + 1);
+                copy_tile(cb_in1, base_t + i, i + tiles_per_dst_cycle);
             }
 
             add_binary_tile_init();
             for (uint32_t i = 0; i < final_remainder; i++) {
-                add_binary_tile(i * 2, i * 2 + 1, i * 2);
+                add_binary_tile(i, i + tiles_per_dst_cycle, i);
             }
 
             exp_tile_init();
             for (uint32_t i = 0; i < final_remainder; i++) {
-                exp_tile(i * 2);
+                exp_tile(i);
             }
 
             copy_tile_init(cb_in2);
             for (uint32_t i = 0; i < final_remainder; i++) {
-                copy_tile(cb_in2, base_t + i, i * 2 + 1);
+                copy_tile(cb_in2, base_t + i, i + tiles_per_dst_cycle);
             }
 
             add_binary_tile_init();
             for (uint32_t i = 0; i < final_remainder; i++) {
-                add_binary_tile(i * 2, i * 2 + 1, i * 2);
+                add_binary_tile(i, i + tiles_per_dst_cycle, i);
             }
 
             tile_regs_commit();
@@ -213,7 +212,7 @@ void MAIN {
 
             cb_reserve_back(cb_out, final_remainder);
             for (uint32_t i = 0; i < final_remainder; i++) {
-                pack_tile(i * 2, cb_out);
+                pack_tile(i, cb_out);
             }
             tile_regs_release();
 
