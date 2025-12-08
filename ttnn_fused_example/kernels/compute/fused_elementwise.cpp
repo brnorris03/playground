@@ -48,7 +48,7 @@ void MAIN {
 
     // 8 DST registers available, 2 needed per tile for binary ops = 4 tiles max
     constexpr uint32_t num_dst_regs = 8;
-    constexpr uint32_t dst_regs_per_tile = 2; // chain of binary & unary ops
+    constexpr uint32_t dst_regs_per_tile = 2;  // chain of binary & unary ops
     constexpr uint32_t tiles_per_dst_cycle = num_dst_regs / dst_regs_per_tile;
 
     // Initialize the SFPU path (unary operations + copy_tile)
@@ -57,6 +57,10 @@ void MAIN {
     // Process tiles in blocks
     uint32_t num_blocks = n_tiles / block_size;
     uint32_t remaining_tiles = n_tiles % block_size;
+
+    // Compute remainder for block processing (64 % 4 = 0, but keep for generality)
+    constexpr uint32_t full_cycles_per_block = block_size / tiles_per_dst_cycle;
+    constexpr uint32_t block_remainder = block_size % tiles_per_dst_cycle;
 
     for (uint32_t block = 0; block < num_blocks; block++) {
         // Wait for entire block of inputs from reader kernel
@@ -67,7 +71,7 @@ void MAIN {
         DeviceZoneScopedN("COMPUTE-block");
 
         // Process block in DST-sized chunks
-        for (uint32_t dst_cycle = 0; dst_cycle < block_size / tiles_per_dst_cycle; dst_cycle++) {
+        for (uint32_t dst_cycle = 0; dst_cycle < full_cycles_per_block; dst_cycle++) {
             uint32_t base_t = dst_cycle * tiles_per_dst_cycle;
 
             // Acquire DST registers for this batch
@@ -103,7 +107,7 @@ void MAIN {
                 copy_tile(cb_in2, base_t + i, i + tiles_per_dst_cycle);  // C[i] -> DST[i+4]
             }
 
-            // Second add: exp(A + B) + C for all tiles
+            // Second add: f(A + B) + C for all tiles
             add_binary_tile_init();
             for (uint32_t i = 0; i < tiles_per_dst_cycle; i++) {
                 add_binary_tile(i, i + tiles_per_dst_cycle, i);  // DST[i] + DST[i+4] -> DST[i]
@@ -121,6 +125,53 @@ void MAIN {
             tile_regs_release();
 
             cb_push_back(cb_out, tiles_per_dst_cycle);
+        }
+
+        // Handle remainder tiles within block (if block_size not divisible by tiles_per_dst_cycle)
+        if constexpr (block_remainder > 0) {
+            uint32_t base_t = full_cycles_per_block * tiles_per_dst_cycle;
+
+            tile_regs_acquire();
+
+            copy_tile_init(cb_in0);
+            for (uint32_t i = 0; i < block_remainder; i++) {
+                copy_tile(cb_in0, base_t + i, i);
+            }
+            copy_tile_init(cb_in1);
+            for (uint32_t i = 0; i < block_remainder; i++) {
+                copy_tile(cb_in1, base_t + i, i + tiles_per_dst_cycle);
+            }
+
+            add_binary_tile_init();
+            for (uint32_t i = 0; i < block_remainder; i++) {
+                add_binary_tile(i, i + tiles_per_dst_cycle, i);
+            }
+
+            UNARY_INIT();
+            for (uint32_t i = 0; i < block_remainder; i++) {
+                UNARY_TILE(i);
+            }
+
+            copy_tile_init(cb_in2);
+            for (uint32_t i = 0; i < block_remainder; i++) {
+                copy_tile(cb_in2, base_t + i, i + tiles_per_dst_cycle);
+            }
+
+            add_binary_tile_init();
+            for (uint32_t i = 0; i < block_remainder; i++) {
+                add_binary_tile(i, i + tiles_per_dst_cycle, i);
+            }
+
+            tile_regs_commit();
+            tile_regs_wait();
+
+            cb_reserve_back(cb_out, block_remainder);
+            for (uint32_t i = 0; i < block_remainder; i++) {
+                pack_tile(i, cb_out);
+            }
+            tile_regs_release();
+
+            cb_push_back(cb_out, block_remainder);
         }
 
         // Pop entire block of inputs

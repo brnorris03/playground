@@ -123,7 +123,7 @@ The profiling shows BRISC (reader) at 5,211 cycles is the bottleneck, not TRISC1
 
 ## Double-Buffering Results (Single Core)
 
-### Summary
+### Summary - EXP Operation
 
 | Tiles | Blocks | Single-buf (cycles) | Double-buf (cycles) | Improvement |
 |-------|--------|---------------------|---------------------|-------------|
@@ -131,7 +131,7 @@ The profiling shows BRISC (reader) at 5,211 cycles is the bottleneck, not TRISC1
 | 256   | 4      | 538,585             | 516,853             | 4.0%        |
 | 1024  | 16     | 2,141,663           | 2,031,266           | 5.2%        |
 
-### Detailed Results (1024 tiles = 16 blocks)
+### Detailed Results (1024 tiles = 16 blocks) - EXP
 
 **Single-Buffered:**
 | Processor | Cycles | Role |
@@ -147,7 +147,7 @@ The profiling shows BRISC (reader) at 5,211 cycles is the bottleneck, not TRISC1
 | **NCRISC** | 1,781,942 | Writer |
 | **TRISC1** | 2,027,335 | Math |
 
-### Analysis
+### Analysis - EXP Operation
 
 The modest 5% improvement even with 16 blocks indicates this kernel is **compute-bound**:
 
@@ -164,14 +164,60 @@ The fused `exp(A + B) + C` operation involves:
 
 The `exp_tile` SFPU operation is expensive, making compute the bottleneck rather than DRAM reads.
 
-**When would double-buffering show bigger gains?**
+---
 
-Double-buffering is most effective when:
-- Read time ≈ Compute time (this kernel has compute >> read)
-- Simple operations like element-wise add/mul (no expensive `exp`)
-- Larger tile sizes or more memory-bound workloads
+## Double-Buffering Results with ReLU (Single Core, 128 tiles = 2 blocks)
 
-For this fused exp kernel, optimization efforts would be better spent on:
-- Reducing SFPU instruction count
-- Using lower precision (if acceptable)
-- Parallelizing across more cores (already done in multi-core mode)
+ReLU is a cheap operation compared to EXP, so we expect different bottleneck behavior.
+
+### Summary - ReLU Operation
+
+| Config | Single-buf (cycles) | Double-buf (cycles) | Improvement |
+|--------|---------------------|---------------------|-------------|
+| 128 tiles, single core | 114,092 | 106,739 | 6.3% |
+
+### Detailed Comparison (128 tiles = 2 blocks) - ReLU
+
+**Single-Buffered:**
+| Processor | Cycles | Role |
+|-----------|--------|------|
+| **BRISC** | 113,870 | Reader |
+| **NCRISC** | 62,605 | Writer |
+| **TRISC0** | 107,471 | Unpack |
+| **TRISC1** | 110,136 | Math |
+| **TRISC2** | 110,067 | Pack |
+
+**Double-Buffered:**
+| Processor | Cycles | Role |
+|-----------|--------|------|
+| **BRISC** | 106,518 | Reader |
+| **NCRISC** | 15,637 | Writer |
+| **TRISC0** | 100,159 | Unpack |
+| **TRISC1** | 102,773 | Math |
+| **TRISC2** | 102,733 | Pack |
+
+### Analysis - ReLU Operation
+
+Double buffering shows **consistent 6-7% improvements** across all compute threads, with the **Writer showing a notable 75% improvement**:
+
+- **BRISC (Reader)**: 6.4% faster (113,870 → 106,518)
+- **NCRISC (Writer)**: **75% faster** (62,605 → 15,637)
+- **TRISC0 (Unpack)**: 6.8% faster (107,471 → 100,159)
+- **TRISC1 (Math)**: 6.7% faster (110,136 → 102,773)
+- **TRISC2 (Pack)**: 6.6% faster (110,067 → 102,733)
+
+**Why ReLU shows consistent improvements:**
+
+Reader and math are balanced (106,518 vs 102,773 cycles), with neither clearly dominant:
+1. The 2x CB size enables better pipelining: reader prefetches block N+1 while compute processes block N
+2. All threads benefit from reduced waiting on the alternate buffer
+3. The writer's dramatic 75% improvement suggests it was experiencing more stalls without double buffering, but this appears to be a synchronization artifact rather than indicating a fundamentally different bottleneck
+
+**Comparison: EXP vs ReLU with Double Buffering**
+
+| Operation | Overall Improvement | Reader vs Math | Observation |
+|-----------|---------------------|---|---|
+| EXP (1024 tiles) | 5.2% | Balanced (2,031M vs 2,027M) | Conservative improvements across all threads |
+| ReLU (128 tiles) | 6.3% | Balanced (106.5k vs 102.8k) | Similar balance; writer stall reduction is outlier |
+
+Both workloads show reader and math approximately balanced, suggesting **double buffering's benefit comes from reduced synchronization stalls and better CB occupancy**, not from shifting a compute-bound bottleneck to become memory-bound.

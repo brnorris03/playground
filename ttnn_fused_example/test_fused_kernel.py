@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Test for fused add-exp-add operation: exp(A + B) + C
+Test for fused operations: f(A + B) + C where f is exp or relu
 All operations happen in DST registers without intermediate CB storage.
 """
 
@@ -40,8 +40,26 @@ BFLOAT16_SIZE = 2  # bytes per element
 @pytest.mark.parametrize("num_tiles", [64, 128, 256, 512, 1024])
 @pytest.mark.parametrize("double_buffer", [False, True], ids=["single_buf", "double_buf"])
 @pytest.mark.parametrize("single_core", [False, True], ids=["multi_core", "single_core"])
-def test_fused_kernel(device, num_tiles, double_buffer, single_core):
-    """Test fused exp(A+B)+C operation with block processing"""
+@pytest.mark.parametrize("unary_op", ["exp", "relu"], ids=["exp", "relu"])
+def test_fused_kernel(device, num_tiles, double_buffer, single_core, unary_op):
+    """Test fused f(A+B)+C operation with block processing, where f is exp or relu"""
+    _run_fused_kernel_test(device, num_tiles, double_buffer, single_core, unary_op, BLOCK_H, BLOCK_W)
+
+
+@pytest.mark.parametrize("block_h,block_w", [(3, 3), (5, 5), (7, 3)], ids=["3x3", "5x5", "7x3"])
+@pytest.mark.parametrize("unary_op", ["exp", "relu"], ids=["exp", "relu"])
+def test_fused_kernel_remainder(device, block_h, block_w, unary_op):
+    """Test fused kernel with block sizes not divisible by 4 (exercises remainder loop)"""
+    block_size = block_h * block_w
+    # Use num_tiles that gives us at least 2 full blocks
+    num_tiles = block_size * 2
+    _run_fused_kernel_test(device, num_tiles, double_buffer=False, single_core=True, unary_op=unary_op,
+                           block_h=block_h, block_w=block_w)
+
+
+def _run_fused_kernel_test(device, num_tiles, double_buffer, single_core, unary_op, block_h, block_w):
+    """Test fused f(A+B)+C operation with block processing, where f is exp or relu"""
+    block_size = block_h * block_w
 
     shape = [1, num_tiles, 32, 32]
 
@@ -111,7 +129,7 @@ def test_fused_kernel(device, num_tiles, double_buffer, single_core):
     cb_page_size = tile_height * tile_width * BFLOAT16_SIZE  # 2KB per tile
     # CB must hold an entire block of tiles (double for double-buffering)
     num_buffers = 2 if double_buffer else 1
-    cb_total_size = BLOCK_SIZE * cb_page_size * num_buffers  # 64 tiles * 2KB * num_buffers
+    cb_total_size = block_size * cb_page_size * num_buffers  # block_size tiles * 2KB * num_buffers
 
     # Define circular buffers
     in0_cb = 0
@@ -200,9 +218,13 @@ def test_fused_kernel(device, num_tiles, double_buffer, single_core):
 
     # Pass block configuration via defines
     block_defines = [
-        ("BLOCK_H", str(BLOCK_H)),
-        ("BLOCK_W", str(BLOCK_W)),
+        ("BLOCK_H", str(block_h)),
+        ("BLOCK_W", str(block_w)),
     ]
+
+    # Add unary operation define
+    if unary_op == "relu":
+        block_defines.append(("USE_RELU", "1"))
 
     # Select reader kernel based on buffering mode
     reader_kernel_path = (
@@ -253,8 +275,11 @@ def test_fused_kernel(device, num_tiles, double_buffer, single_core):
     # Execute the fused operation
     output = ttnn.generic_op(io_tensors, program_descriptor)
 
-    # Compute golden result using PyTorch: exp(A + B) + C
-    torch_result = torch.exp(data_a + data_b) + data_c
+    # Compute golden result using PyTorch: f(A + B) + C
+    if unary_op == "relu":
+        torch_result = torch.relu(data_a + data_b) + data_c
+    else:  # exp
+        torch_result = torch.exp(data_a + data_b) + data_c
     torch_output = ttnn.to_torch(output)
 
     logger.debug(f"Input A: {data_a.shape}, sample: {data_a[0, 0, 0, :5]}")
@@ -273,7 +298,7 @@ def test_fused_kernel(device, num_tiles, double_buffer, single_core):
         log_mismatch_diagnostics(torch_result, torch_output,
                                  inputs={"A": data_a, "B": data_b, "C": data_c})
 
-    assert matching, "Fused add-exp-add operation failed to match expected result"
+    assert matching, f"Fused {unary_op} operation f(A+B)+C failed to match expected result"
 
 
 if __name__ == "__main__":
