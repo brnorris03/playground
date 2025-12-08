@@ -1,4 +1,4 @@
-# Fused Add-Exp-Add Operation Example
+# Fused Elementwise Operation Example
 
 This example demonstrates how to create a fused element-wise operation that performs three consecutive operations without storing intermediate results:
 
@@ -20,11 +20,12 @@ available for f16 with `dst_full_sync_en=false`; this is the default, not modifi
 ttnn_fused_example/
 ├── kernels/
 │   ├── compute/
-│   │   └── fused_add_exp_add.cpp    # Compute kernel (3 fused ops, block processing)
+│   │   └── fused_elementwise.cpp    # Compute kernel (3 fused ops, block processing)
 │   └── dataflow/
-│       ├── reader_ternary.cpp        # Reads 3 input tensors in blocks
+│       ├── reader_ternary.cpp        # Single-buffered reader
+│       ├── reader_ternary_db.cpp     # Double-buffered reader
 │       └── writer_unary.cpp          # Writes output tensor in blocks
-├── test_fused_add_exp_add.py         # Python test using ttnn.generic_op
+├── test_fused_kernel.py         # Python test using ttnn.generic_op
 ├── utils.py                           # Tensor comparison utilities
 └── README.md                          # This file
 ```
@@ -117,17 +118,17 @@ CBs must hold an entire block of tiles:
 
 ```bash
 # From ttnn_fused_example directory
-source $TT_METAL_ROOT/python_env/bin/activate && pytest -svx test_fused_add_exp_add.py
+source $TT_METAL_ROOT/python_env/bin/activate && pytest -svx test_fused_kernel.py
 ```
 
 Or with specific tile counts:
 ```bash
-source $TT_METAL_ROOT/python_env/bin/activate && pytest -svx test_fused_add_exp_add.py -k "num_tiles-64"
+source $TT_METAL_ROOT/python_env/bin/activate && pytest -svx test_fused_kernel.py -k "num_tiles-64"
 ```
 
 Note: No pre-compilation needed. The kernels are compiled JIT (just-in-time) by `ttnn.generic_op` when the test runs.
 
-Test parameters: 64, 128, 256 tiles (all multiples of block size).
+Test parameters: 64, 128, 256 tiles × single/double buffering modes.
 
 ## Example Output
 ```plaintext
@@ -141,7 +142,7 @@ collecting ... 2025-12-07 21:18:51.440 | DEBUG    | ttnn:<module>:77 - Initial t
 Config{cache_path=/home/bnorris/.cache/ttnn,model_cache_path=/home/bnorris/.cache/ttnn/models,tmp_dir=/tmp/ttnn,enable_model_cache=false,enable_fast_runtime_mode=true,throw_exception_on_fallback=false,enable_logging=false,enable_graph_report=false,enable_detailed_buffer_report=false,enable_detailed_tensor_report=false,enable_comparison_mode=false,comparison_mode_should_raise_exception=false,comparison_mode_pcc=0.9999,root_report_path=generated/ttnn/reports,report_name=std::nullopt,std::nullopt}
 collected 3 items                                                                                                                                     
 
-test_fused_add_exp_add.py::test_fused_add_exp_add[64] 2025-12-07 21:18:51.528 | info     |             UMD | Starting topology discovery. (topology_discovery.cpp:69)
+test_fused_kernel.py::test_fused_kernel[64] 2025-12-07 21:18:51.528 | info     |             UMD | Starting topology discovery. (topology_discovery.cpp:69)
 2025-12-07 21:18:52.044 | info     |             UMD | Established firmware bundle version: 18.12.0 (topology_discovery.cpp:369)
 2025-12-07 21:18:52.044 | info     |             UMD | Established ETH FW version: 1.7.0 (topology_discovery_blackhole.cpp:305)
 2025-12-07 21:18:52.044 | info     |             UMD | Completed topology discovery. (topology_discovery.cpp:73)
@@ -167,14 +168,15 @@ Authorization required, but no authorization protocol specified
 2025-12-07 21:18:56.679 | info     |          Fabric | TopologyMapper mapping start (mesh=0): n_log=1, n_phys=1, log_deg_hist={0:1}, phys_deg_hist={0:1} (topology_mapper_utils.cpp:167)
 2025-12-07 21:18:56.871 | INFO     | utils:check_tensors_match:27 - PASS | dtype eps=7.81e-03 | max abs diff=9.38e-02 (tol=1.00e-01) | max rel diff=5.00e-01 (tol=5.00e-02)
 PASSED
-test_fused_add_exp_add.py::test_fused_add_exp_add[128] 2025-12-07 21:18:56.879 | INFO     | utils:check_tensors_match:27 - PASS | dtype eps=7.81e-03 | max abs diff=9.38e-02 (tol=1.00e-01) | max rel diff=5.00e-01 (tol=5.00e-02)
+test_fused_kernel.py::test_fused_kernel[128] 2025-12-07 21:18:56.879 | INFO     | utils:check_tensors_match:27 - PASS | dtype eps=7.81e-03 | max abs diff=9.38e-02 (tol=1.00e-01) | max rel diff=5.00e-01 (tol=5.00e-02)
 PASSED
-test_fused_add_exp_add.py::test_fused_add_exp_add[256] 2025-12-07 21:18:56.889 | INFO     | utils:check_tensors_match:27 - PASS | dtype eps=7.81e-03 | max abs diff=9.38e-02 (tol=1.00e-01) | max rel diff=5.00e-01 (tol=5.00e-02)
+test_fused_kernel.py::test_fused_kernel[256] 2025-12-07 21:18:56.889 | INFO     | utils:check_tensors_match:27 - PASS | dtype eps=7.81e-03 | max abs diff=9.38e-02 (tol=1.00e-01) | max rel diff=5.00e-01 (tol=5.00e-02)
 PASSED
 
 ================================================================== 3 passed in 7.88s ==================================================================
 2025-12-07 21:18:58.123 | info     |          Device | Closing user mode device drivers (tt_cluster.cpp:442)
 ```
+
 ## Extending the Example
 
 To create your own fused operation:

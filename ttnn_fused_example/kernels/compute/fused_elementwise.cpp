@@ -2,17 +2,28 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Fused kernel: performs exp(A + B) + C
+// Fused kernel: performs f(A + B) + C where f is exp or relu (configurable via USE_RELU define)
 // Processes tiles in 2D blocks (BLOCK_H x BLOCK_W tiles)
 // Uses DST_TILES tiles per DST acquire cycle to maximize register usage
 // With 8 DST registers and 2 needed per tile, we can process 4 tiles at once
 
 #include "compute_kernel_api.h"
+#include "tools/profiler/kernel_profiler.hpp"
 #include "compute_kernel_api/common.h"
 #include "compute_kernel_api/eltwise_binary_sfpu.h"
 #include "compute_kernel_api/eltwise_unary/eltwise_unary.h"
 #include "compute_kernel_api/eltwise_unary/exp.h"
+#include "compute_kernel_api/eltwise_unary/relu.h"
 #include "compute_kernel_api/tile_move_copy.h"
+
+// Unary operation selection: USE_RELU for cheap op, otherwise exp (expensive)
+#ifdef USE_RELU
+#define UNARY_INIT() relu_tile_init()
+#define UNARY_TILE(i) relu_tile(i)
+#else
+#define UNARY_INIT() exp_tile_init()
+#define UNARY_TILE(i) exp_tile(i)
+#endif
 
 // Block configuration (passed via defines from Python)
 #ifndef BLOCK_H
@@ -53,6 +64,8 @@ void MAIN {
         cb_wait_front(cb_in1, block_size);
         cb_wait_front(cb_in2, block_size);
 
+        DeviceZoneScopedN("COMPUTE-block");
+
         // Process block in DST-sized chunks
         for (uint32_t dst_cycle = 0; dst_cycle < block_size / tiles_per_dst_cycle; dst_cycle++) {
             uint32_t base_t = dst_cycle * tiles_per_dst_cycle;
@@ -78,10 +91,10 @@ void MAIN {
                 add_binary_tile(i, i + tiles_per_dst_cycle, i);  // DST[i] + DST[i+4] -> DST[i]
             }
 
-            // Exp: exp(A + B) for all tiles (in-place on registers 0-3)
-            exp_tile_init();
+            // Unary op: f(A + B) for all tiles (in-place on registers 0-3)
+            UNARY_INIT();
             for (uint32_t i = 0; i < tiles_per_dst_cycle; i++) {
-                exp_tile(i);
+                UNARY_TILE(i);
             }
 
             // Copy C tiles to DST registers 4-7
@@ -145,9 +158,9 @@ void MAIN {
                 add_binary_tile(i, i + tiles_per_dst_cycle, i);
             }
 
-            exp_tile_init();
+            UNARY_INIT();
             for (uint32_t i = 0; i < tiles_per_dst_cycle; i++) {
-                exp_tile(i);
+                UNARY_TILE(i);
             }
 
             copy_tile_init(cb_in2);
@@ -192,9 +205,9 @@ void MAIN {
                 add_binary_tile(i, i + tiles_per_dst_cycle, i);
             }
 
-            exp_tile_init();
+            UNARY_INIT();
             for (uint32_t i = 0; i < final_remainder; i++) {
-                exp_tile(i);
+                UNARY_TILE(i);
             }
 
             copy_tile_init(cb_in2);

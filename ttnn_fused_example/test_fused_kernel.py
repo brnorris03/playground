@@ -37,8 +37,10 @@ BLOCK_SIZE = BLOCK_H * BLOCK_W  # 64 tiles per block
 BFLOAT16_SIZE = 2  # bytes per element
 
 
-@pytest.mark.parametrize("num_tiles", [64, 128, 256])
-def test_fused_add_exp_add(device, num_tiles):
+@pytest.mark.parametrize("num_tiles", [64, 128, 256, 512, 1024])
+@pytest.mark.parametrize("double_buffer", [False, True], ids=["single_buf", "double_buf"])
+@pytest.mark.parametrize("single_core", [False, True], ids=["multi_core", "single_core"])
+def test_fused_kernel(device, num_tiles, double_buffer, single_core):
     """Test fused exp(A+B)+C operation with block processing"""
 
     shape = [1, num_tiles, 32, 32]
@@ -86,20 +88,30 @@ def test_fused_add_exp_add(device, num_tiles):
 
     io_tensors = [input_tensor_a, input_tensor_b, input_tensor_c, output_tensor]
 
-    # Configure core grid (use single core for simplicity)
-    max_core = ttnn.CoreCoord(7, 7)
-    all_cores = ttnn.CoreRangeSet([ttnn.CoreRange(ttnn.CoreCoord(0, 0), max_core)])
-    (_, core_grid, core_group_1, core_group_2, work_per_core1, _) = ttnn.split_work_to_cores(all_cores, num_tiles)
-    assert (
-        len(core_group_2.ranges()) == 0
-    ), "Fused kernel has number of tiles as compile time arg, does not support 2 core groups"
+    # Configure core grid
+    if single_core:
+        # Single core gets all tiles - useful for testing double-buffering with multiple blocks
+        max_core = ttnn.CoreCoord(0, 0)
+        core_grid = ttnn.CoreRangeSet([ttnn.CoreRange(ttnn.CoreCoord(0, 0), max_core)])
+        core_group_1 = core_grid
+        core_group_2 = ttnn.CoreRangeSet([])
+        work_per_core1 = num_tiles
+    else:
+        # Distribute work across multiple cores
+        max_core = ttnn.CoreCoord(7, 7)
+        all_cores = ttnn.CoreRangeSet([ttnn.CoreRange(ttnn.CoreCoord(0, 0), max_core)])
+        (_, core_grid, core_group_1, core_group_2, work_per_core1, _) = ttnn.split_work_to_cores(all_cores, num_tiles)
+        assert (
+            len(core_group_2.ranges()) == 0
+        ), "Fused kernel has number of tiles as compile time arg, does not support 2 core groups"
 
     input_cb_data_format = ttnn.bfloat16
     tile_height = 32
     tile_width = 32
     cb_page_size = tile_height * tile_width * BFLOAT16_SIZE  # 2KB per tile
-    # CB must hold an entire block of tiles
-    cb_total_size = BLOCK_SIZE * cb_page_size  # 64 tiles * 2KB = 128KB
+    # CB must hold an entire block of tiles (double for double-buffering)
+    num_buffers = 2 if double_buffer else 1
+    cb_total_size = BLOCK_SIZE * cb_page_size * num_buffers  # 64 tiles * 2KB * num_buffers
 
     # Define circular buffers
     in0_cb = 0
@@ -192,9 +204,15 @@ def test_fused_add_exp_add(device, num_tiles):
         ("BLOCK_W", str(BLOCK_W)),
     ]
 
+    # Select reader kernel based on buffering mode
+    reader_kernel_path = (
+        "kernels/dataflow/reader_ternary_db.cpp" if double_buffer
+        else "kernels/dataflow/reader_ternary.cpp"
+    )
+
     # Reader kernel descriptor
     reader_kernel_descriptor = ttnn.KernelDescriptor(
-        kernel_source="kernels/dataflow/reader_ternary.cpp",
+        kernel_source=reader_kernel_path,
         source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
         core_ranges=core_grid,
         compile_time_args=reader_compile_time_args,
@@ -216,7 +234,7 @@ def test_fused_add_exp_add(device, num_tiles):
 
     # Compute kernel descriptor
     compute_kernel_descriptor = ttnn.KernelDescriptor(
-        kernel_source="kernels/compute/fused_add_exp_add.cpp",
+        kernel_source="kernels/compute/fused_elementwise.cpp",
         source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
         core_ranges=core_grid,
         compile_time_args=compute_compile_time_args,
@@ -264,7 +282,7 @@ if __name__ == "__main__":
 
     device = ttnn.open_device(device_id=0)
     try:
-        test_fused_add_exp_add(device, num_tiles=64)
+        test_fused_kernel(device, num_tiles=64)
         logger.info("Test passed!")
     finally:
         ttnn.close_device(device)
